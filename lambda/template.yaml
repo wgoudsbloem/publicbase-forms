@@ -1,0 +1,113 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  lambda
+
+  Sample SAM Template for lambda
+  
+# More info about Globals: https://github.com/awslabs/serverless-application-model/blob/master/docs/globals.rst
+Globals:
+  Function:
+    Timeout: 3
+    Runtime: nodejs24.x
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        DB_NAME: publicbase
+        DB_PORT: "5432"
+        DB_SSL: "true"
+
+Parameters:
+  PublicHttpApiId:
+    Type: String
+    Default: 83t8t7jr53
+    Description: HTTP API ID for the existing public-api in API Gateway v2.
+  VpcId:
+    Type: String
+    Default: vpc-0e1bcb950b659598f
+    Description: VPC ID used for the form Lambda.
+  LambdaSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+    Default: subnet-0abbfe68915116e61,subnet-0ae9dc1c8a4178603,subnet-0fbef6d62eb305688
+    Description: Subnets for the form Lambda VPC config.
+  DbSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Description: Security group ID for the existing publicbase database.
+  DbHost:
+    Type: String
+    Description: Database host for publicbase.
+  DbUser:
+    Type: String
+    Description: Database username for publicbase.
+  DbPassword:
+    Type: String
+    NoEcho: true
+    Description: Database password for publicbase.
+
+Resources:
+
+  FormLambdaSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Lambda SG for public form submissions.
+      VpcId: !Ref VpcId
+
+  FormDbIngressFromLambda:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref DbSecurityGroupId
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      SourceSecurityGroupId: !Ref FormLambdaSecurityGroup
+      Description: Allow Postgres from form Lambda SG.
+
+  FormLambdaEgressToDb:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref FormLambdaSecurityGroup
+      IpProtocol: tcp
+      FromPort: 5432
+      ToPort: 5432
+      DestinationSecurityGroupId: !Ref DbSecurityGroupId
+      Description: Allow Lambda SG egress to DB SG.
+
+  FormPost:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: form-post
+      CodeUri: form-post/
+      Handler: index.handler
+      VpcConfig:
+        SecurityGroupIds:
+          - !Ref FormLambdaSecurityGroup
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          DB_HOST: !Ref DbHost
+          DB_USER: !Ref DbUser
+          DB_PASSWORD: !Ref DbPassword
+
+  PublicHttpApiFormPostIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref PublicHttpApiId
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FormPost.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  PublicHttpApiFormPostRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref PublicHttpApiId
+      RouteKey: "POST /form"
+      Target: !Sub "integrations/${PublicHttpApiFormPostIntegration}"
+
+  PublicHttpApiFormPostPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref FormPost
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PublicHttpApiId}/*/POST/form"

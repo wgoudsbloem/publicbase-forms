@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="/res/base.css">
+    <script src="/res/base.js" defer></script>
+    <title>Sample Form</title>
+</head>
+
+<body>
+    <main class="layout form-layout">
+        <section class="panel base-panel">
+            <div class="base-header">
+                <h2 id="form-title">Pet License Application</h2>
+                <p class="lede" id="form-description">Submit your pet information to apply for a local pet license.</p>
+            </div>
+            <div class="base__header">
+            </div>
+            <div id="form-base" class="base">
+                <form autocomplete="off"><label>
+                        <div class="label-row"><span class="label-title">Owner full name*</span></div><input type="text"
+                            placeholder="Joe Does" required="">
+                    </label><label>
+                        <div class="label-row"><span class="label-title">Email*</span></div><input type="email"
+                            placeholder="you@example.com" required="">
+                    </label><label>
+                        <div class="label-row"><span class="label-title">Phone number*</span></div><input type="text"
+                            placeholder="(555) 123-4567" required="">
+                    </label><label>
+                        <div class="label-row"><span class="label-title">Pet name*</span></div><input type="text"
+                            placeholder="Luna" required="">
+                    </label><label>
+                        <div class="label-row"><span class="label-title">Species*</span></div><select required="">
+                            <option value="Dog">Dog</option>
+                            <option value="Cat">Cat</option>
+                        </select>
+                    </label><label>
+                        <div class="label-row"><span class="label-title">Breed</span></div><input type="text"
+                            placeholder="Labrador, Siamese, Mixed">
+                    </label><label>
+                        <div class="label-row"><span class="label-title">Age (years)</span><span
+                                class="label-hint">(between
+                                0-40)</span></div><input type="number" step="any" min="0" max="40" placeholder="3">
+                    </label>
+                    <div class="radio-field-wrapper">
+                        <div class="label-row"><span class="label-title">Spayed/Neutered*</span></div>
+                        <div class="radio-group"><label class="inline"><input type="radio" name="spayed_neutered"
+                                    value="Yes" required=""><span>Yes</span></label><label class="inline"><input
+                                    type="radio" name="spayed_neutered" value="No" required=""><span>No</span></label>
+                        </div>
+                    </div><label>
+                        <div class="label-row"><span class="label-title">Microchip ID</span></div><input type="text"
+                            placeholder="Optional">
+                    </label><label>
+                        <div class="label-row"><span class="label-title">Emergency contact</span></div><input
+                            type="text" placeholder="Name and phone">
+                    </label>
+                </form>
+            </div>
+            <div class="base-footer">
+                <button type="button" id="submit-form" class="base-submit-btn">Submit</button>
+            </div>
+        </section>
+    </main>
+</body>
+
+</html>
