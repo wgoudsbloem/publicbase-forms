@@ -1,11 +1,10 @@
 {
-  "name": "form-post",
+  "name": "form-code-get",
   "version": "1.0.0",
   "type": "module",
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.733.0",
     "@aws-sdk/lib-dynamodb": "^3.733.0",
-    "@smithy/node-http-handler": "^3.3.0",
-    "pg": "^8.11.5"
+    "@smithy/node-http-handler": "^3.3.0"
   }
 }

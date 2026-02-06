@@ -1,6 +1,13 @@
 const baseEl = document.getElementById('form-base');
 const submitBtn = document.getElementById('submit-form');
 const FORM_API_URL = 'https://api.publicbase.com/form';
+const FORM_CODE_API_BASE = 'https://api.publicbase.com/form/code';
+let issuedFormCode = null;
+
+const getFormPathFromUrl = () => {
+    const path = window.location.pathname || '/';
+    return path.replace(/^\/+/, '').replace(/\/+$/, '');
+};
 
 const collectFormData = (form) => {
     const values = {};
@@ -27,16 +34,13 @@ if (submitBtn) {
             return;
         }
 
-        const formId = baseEl ? baseEl.dataset.formId : null;
-        const departmentId = baseEl ? baseEl.dataset.departmentId : null;
-        // if (!formId || !departmentId) {
-        //     console.warn('Missing formId or departmentId on #form-base data attributes.');
-        //     return;
-        // }
+        if (!issuedFormCode) {
+            console.warn('Missing issued form code.');
+            return;
+        }
 
         const payload = {
-            formId,
-            departmentId,
+            code: issuedFormCode,
             data: collectFormData(form)
         };
 
@@ -59,3 +63,28 @@ if (submitBtn) {
         }
     });
 }
+
+const initFormCode = async () => {
+    if (!baseEl) return;
+    const formPath = getFormPathFromUrl();
+    if (!formPath) {
+        console.warn('Missing form path in URL.');
+        return;
+    }
+    try {
+        const encodedPath = btoa(formPath);
+        const res = await fetch(`${FORM_CODE_API_BASE}?id=${encodeURIComponent(encodedPath)}`, {
+            method: 'GET'
+        });
+        if (!res.ok) {
+            console.warn('Failed to fetch form code', { status: res.status });
+            return;
+        }
+        const json = await res.json();
+        issuedFormCode = json?.code || null;
+    } catch (err) {
+        console.warn('Form code request error', err);
+    }
+};
+
+initFormCode();

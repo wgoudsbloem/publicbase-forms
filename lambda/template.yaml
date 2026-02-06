@@ -47,31 +47,27 @@ Parameters:
 
 Resources:
 
-  FormLambdaSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
+  FormCodesTable:
+    Type: AWS::DynamoDB::Table
     Properties:
-      GroupDescription: Lambda SG for public form submissions.
-      VpcId: !Ref VpcId
+      TableName: form_codes
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: code
+          AttributeType: S
+      KeySchema:
+        - AttributeName: code
+          KeyType: HASH
+      TimeToLiveSpecification:
+        AttributeName: expires_at
+        Enabled: true
 
-  FormDbIngressFromLambda:
-    Type: AWS::EC2::SecurityGroupIngress
+  AdminLambdaSecurityGroup:
+    Type: AWS::SSM::Parameter
     Properties:
-      GroupId: !Ref DbSecurityGroupId
-      IpProtocol: tcp
-      FromPort: 5432
-      ToPort: 5432
-      SourceSecurityGroupId: !Ref FormLambdaSecurityGroup
-      Description: Allow Postgres from form Lambda SG.
-
-  FormLambdaEgressToDb:
-    Type: AWS::EC2::SecurityGroupEgress
-    Properties:
-      GroupId: !Ref FormLambdaSecurityGroup
-      IpProtocol: tcp
-      FromPort: 5432
-      ToPort: 5432
-      DestinationSecurityGroupId: !Ref DbSecurityGroupId
-      Description: Allow Lambda SG egress to DB SG.
+      Name: /publicbase/forms/admin-lambda-sg
+      Type: String
+      Value: sg-0612f82330f2556e3
 
   FormPost:
     Type: AWS::Serverless::Function
@@ -81,13 +77,64 @@ Resources:
       Handler: index.handler
       VpcConfig:
         SecurityGroupIds:
-          - !Ref FormLambdaSecurityGroup
+          - sg-0612f82330f2556e3
         SubnetIds: !Ref LambdaSubnetIds
       Environment:
         Variables:
           DB_HOST: !Ref DbHost
           DB_USER: !Ref DbUser
           DB_PASSWORD: !Ref DbPassword
+          FORM_CODES_TABLE: !Ref FormCodesTable
+          DEBUG: "true"
+          DB_CONNECT_TIMEOUT_MS: "3000"
+          DB_QUERY_TIMEOUT_MS: "3000"
+          DDB_REQUEST_TIMEOUT_MS: "2000"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FormCodesTable
+
+  FormCodeGet:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: form-code-get
+      CodeUri: form-code-get/
+      Handler: index.handler
+      Timeout: 10
+      VpcConfig:
+        SecurityGroupIds:
+          - sg-0612f82330f2556e3
+        SubnetIds: !Ref LambdaSubnetIds
+      Environment:
+        Variables:
+          FORM_CODES_TABLE: !Ref FormCodesTable
+          DEBUG: "true"
+          DDB_REQUEST_TIMEOUT_MS: "2000"
+      Policies:
+        - DynamoDBWritePolicy:
+            TableName: !Ref FormCodesTable
+
+  PublicHttpApiFormCodeGetIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref PublicHttpApiId
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FormCodeGet.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  PublicHttpApiFormCodeGetRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref PublicHttpApiId
+      RouteKey: "GET /form/code"
+      Target: !Sub "integrations/${PublicHttpApiFormCodeGetIntegration}"
+
+  PublicHttpApiFormCodeGetPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref FormCodeGet
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PublicHttpApiId}/*/GET/form/code"
 
   PublicHttpApiFormPostIntegration:
     Type: AWS::ApiGatewayV2::Integration
