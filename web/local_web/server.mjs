@@ -22,7 +22,7 @@ const ensureCert = () => {
     `-keyout "${keyPath}"`,
     `-out "${certPath}"`,
     '-days 365',
-    '-subj "/CN=forms.publicbase.com"'
+    '-subj "/CN=forms-dev.publicbase.com"'
   ].join(' ');
   execSync(cmd, { stdio: 'ignore' });
 };
@@ -86,7 +86,7 @@ const options = {
 };
 
 https.createServer(options, server).listen(port, host, () => {
-  const address = host === '0.0.0.0' ? 'forms.publicbase.com' : host;
+  const address = host === '0.0.0.0' ? 'forms-dev.publicbase.com' : host;
   // eslint-disable-next-line no-console
   console.log(`HTTPS dev server running at https://${address}:${port}`);
 });
