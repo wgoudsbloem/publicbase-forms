@@ -90,6 +90,15 @@ export const handler = async (event) => {
     return response(400);
   }
 
+  const confirmationCode = (() => {
+    const alphabet = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let out = '';
+    for (let i = 0; i < 6; i += 1) {
+      out += alphabet[Math.floor(Math.random() * alphabet.length)];
+    }
+    return out;
+  })();
+
   const submissionId = crypto.randomUUID();
   try {
     const codeResult = await withTimeout(
@@ -117,13 +126,18 @@ export const handler = async (event) => {
     logDebug('DB connect ok', { requestId });
     let formId;
     try {
+      const rawPath = String(codeItem.form_path || '');
+      const normalizedPath = rawPath
+        .replace(/\/+$/, '')
+        .replace(/\/index\.html$/, '')
+        .replace(/^\/?/, '/');
       const result = await withTimeout(
         client.query(
           `select id
            from forms.forms
            where code = $1
            limit 1`,
-          [codeItem.form_path]
+          [normalizedPath]
         ),
         queryTimeoutMs,
         'DB query'
@@ -152,11 +166,12 @@ export const handler = async (event) => {
     );
     const insertClient = await withTimeout(pool.connect(), connectTimeoutMs, 'DB connect');
     try {
+      const submissionData = { ...data, confirmation_code: confirmationCode };
       await withTimeout(
         insertClient.query(
-          `insert into publish.submissions (id, form_id, data)
-           values ($1, $2, $3)`,
-          [submissionId, formId, data]
+          `insert into publish.submissions (id, form_id, data, confirmation_code)
+           values ($1, $2, $3, $4)`,
+          [submissionId, formId, submissionData, confirmationCode]
         ),
         queryTimeoutMs,
         'DB query'
@@ -165,7 +180,7 @@ export const handler = async (event) => {
       insertClient.release();
     }
     logDebug('Submission stored', { requestId, submissionId, formId });
-    return response(200, { ok: true, id: submissionId });
+    return response(200, { ok: true, id: submissionId, confirmationCode });
   } catch (err) {
     logError('Submission failed', { requestId, error: err?.message });
     return response(500);

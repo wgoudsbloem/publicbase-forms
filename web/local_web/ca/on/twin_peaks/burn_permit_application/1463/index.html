@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="/base.css" rel="stylesheet">
+    <script src="/base.js" defer></script>
+    <title>Burn Permit Application</title>
+</head>
+
+<body>
+    <main>
+        <header>
+            <h1>Burn Permit Application</h1>
+            <p>Apply for an open-air burn permit (where permitted).</p>
+        </header>
+        <form autocomplete="off">
+            <section>
+                <fieldset>
+                    <label><span>Applicant first name</span><input type="text" name="first_name" required></label>
+                    <label><span>Applicant last name</span><input type="text" name="last_name" required></label>
+                    <label><span>Applicant email</span><input type="email" name="email" placeholder="you@example.com"
+                            required></label>
+                    <label><span>Burn location address</span><input type="text" name="burn_address" required></label>
+                    <label><span>Burn type</span><select name="burn_type" required>
+                            <option value="">Select burn type</option>
+                            <option value="Brush">Brush</option>
+                            <option value="Agricultural">Agricultural</option>
+                            <option value="Recreational fire">Recreational fire</option>
+                            <option value="Other">Other</option>
+                        </select></label>
+                    <label><span>Requested burn date</span><input type="date" name="start_date" required></label>
+                    <label><input type="checkbox" name="safety_ack" value="true" required><span>Safety
+                            acknowledgement</span></label>
+                    <label><input type="checkbox" name="terms_ack" value="true"
+                            required><span>Declaration</span></label>
+                </fieldset>
+            </section>
+            <button id="submit-btn" type="submit">Submit request</button>
+        </form>
+    </main>
+</body>
+
+</html>
