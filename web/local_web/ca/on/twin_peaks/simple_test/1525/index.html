@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link href="/base.css" rel="stylesheet" />
+    <script src="/base.js" defer></script>
+    <title>Third new form</title>
+  </head>
+
+  <body>
+    <main>
+      <header>
+        <h1>Third new form</h1>
+        <p>this is the second new form with contact </p>
+      </header>
+      <form autocomplete="off">
+        <section>
+          <fieldset>
+            <label><span>First name</span><input type="text" name="first_name" required /></label>
+            <label><span>Last name</span><input type="text" name="last_name" required /></label>
+            <label><span>Phone</span><input type="text" name="phone" placeholder="555-123-4567" required /></label>
+            <label><span>Email</span><input type="email" name="email" placeholder="you@example.com" /></label>
+            <div class="field-group">
+              <span>Preferred contact*</span>
+              <label>
+                <input type="radio" name="preference" value="PHONE" required />
+                Phone
+              </label>
+              <label>
+                <input type="radio" name="preference" value="EMAIL" required />
+                Email
+              </label>
+            </div>
+            <div class="field-group">
+              <span>Are you sure*</span>
+              <label>
+                <input type="radio" name="are_you_sure" value="Yes" required checked />
+                Yes
+              </label>
+              <label>
+                <input type="radio" name="are_you_sure" value="No" required />
+                No
+              </label>
+              <label>
+                <input type="radio" name="are_you_sure" value="Maybe so" required />
+                Maybe so
+              </label>
+            </div>
+          </fieldset>
+        </section>
+        <button id="submit-btn" type="submit">Submit request</button>
+      </form>
+    </main>
+  </body>
+
+</html>

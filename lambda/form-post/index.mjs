@@ -2,6 +2,7 @@ import pg from 'pg';
 import crypto from 'crypto';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 
 const { Pool } = pg;
@@ -25,10 +26,18 @@ const ddb = DynamoDBDocumentClient.from(
     })
   })
 );
+const sns = new SNSClient({
+  region: awsRegion,
+  requestHandler: new NodeHttpHandler({
+    connectionTimeout: Number(process.env.SNS_REQUEST_TIMEOUT_MS) || 8000,
+    requestTimeout: Number(process.env.SNS_REQUEST_TIMEOUT_MS) || 8000
+  })
+});
 const formCodesTable = process.env.FORM_CODES_TABLE;
 const debugEnabled = String(process.env.DEBUG || '').toLowerCase() === 'true';
 const connectTimeoutMs = Number(process.env.DB_CONNECT_TIMEOUT_MS) || 3000;
 const queryTimeoutMs = Number(process.env.DB_QUERY_TIMEOUT_MS) || 3000;
+const snsTimeoutMs = Number(process.env.SNS_REQUEST_TIMEOUT_MS) || 8000;
 
 const response = (statusCode, body) => ({
   statusCode,
@@ -180,6 +189,30 @@ export const handler = async (event) => {
       insertClient.release();
     }
     logDebug('Submission stored', { requestId, submissionId, formId });
+    if (process.env.FORM_SUBMISSIONS_TOPIC_ARN) {
+      try {
+        logDebug('SNS publish start', { requestId });
+        await withTimeout(
+          sns.send(
+            new PublishCommand({
+              TopicArn: process.env.FORM_SUBMISSIONS_TOPIC_ARN,
+              Message: JSON.stringify({
+                submission_id: submissionId,
+                form_id: formId,
+                confirmation_code: confirmationCode,
+                submitted_at: new Date().toISOString()
+              })
+            })
+          ),
+          snsTimeoutMs,
+          'SNS publish'
+        );
+        logDebug('SNS publish ok', { requestId });
+      } catch (err) {
+        logError('SNS publish failed', { requestId, error: err?.message });
+        throw err;
+      }
+    }
     return response(200, { ok: true, id: submissionId, confirmationCode });
   } catch (err) {
     logError('Submission failed', { requestId, error: err?.message });

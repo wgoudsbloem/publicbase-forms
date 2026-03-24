@@ -5,6 +5,7 @@
   "dependencies": {
     "@aws-sdk/client-dynamodb": "^3.733.0",
     "@aws-sdk/lib-dynamodb": "^3.733.0",
+    "@aws-sdk/client-sns": "^3.733.0",
     "@smithy/node-http-handler": "^3.3.0",
     "pg": "^8.11.5"
   }

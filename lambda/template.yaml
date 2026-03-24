@@ -47,6 +47,23 @@ Parameters:
 
 Resources:
 
+  FormSubmissionsTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: form-submissions
+
+  SnsInterfaceEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcEndpointType: Interface
+      VpcId: !Ref VpcId
+      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sns"
+      PrivateDnsEnabled: true
+      SubnetIds: !Ref LambdaSubnetIds
+      SecurityGroupIds:
+        - sg-0612f82330f2556e3
+
+
   FormCodesTable:
     Type: AWS::DynamoDB::Table
     Properties:
@@ -75,6 +92,7 @@ Resources:
       FunctionName: form-post
       CodeUri: form-post/
       Handler: index.handler
+      Timeout: 10
       VpcConfig:
         SecurityGroupIds:
           - sg-0612f82330f2556e3
@@ -89,9 +107,13 @@ Resources:
           DB_CONNECT_TIMEOUT_MS: "3000"
           DB_QUERY_TIMEOUT_MS: "3000"
           DDB_REQUEST_TIMEOUT_MS: "2000"
+          SNS_REQUEST_TIMEOUT_MS: "8000"
+          FORM_SUBMISSIONS_TOPIC_ARN: !Ref FormSubmissionsTopic
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref FormCodesTable
+        - SNSPublishMessagePolicy:
+            TopicName: !GetAtt FormSubmissionsTopic.TopicName
 
   FormCodeGet:
     Type: AWS::Serverless::Function
@@ -158,3 +180,8 @@ Resources:
       FunctionName: !Ref FormPost
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PublicHttpApiId}/*/POST/form"
+
+Outputs:
+  FormSubmissionsTopicArn:
+    Description: "SNS Topic ARN for form submissions"
+    Value: !Ref FormSubmissionsTopic

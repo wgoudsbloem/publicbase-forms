@@ -109,19 +109,46 @@
      margin-left: 2px;
  }
 
- input[type=checkbox] {
+input[type=checkbox] {
      width: auto;
  }
 
- label:has(input[type="checkbox"]) {
+input[type="radio"] {
+     width: auto;
+     padding: 0;
+     border: 0;
+     border-radius: 0;
+     background: transparent;
+     box-shadow: none;
+     appearance: auto;
+ }
+
+label:has(input[type="checkbox"]) {
      flex-direction: row;
      align-items: center;
      gap: 10px;
  }
 
- label:has(input[type="checkbox"]) span {
+label:has(input[type="radio"]) {
+     flex-direction: row;
+     align-items: center;
+     gap: 10px;
+ }
+
+label:has(input[type="checkbox"]) span {
      color: var(--text);
      font-size: 14px;
+ }
+
+label:has(input[type="radio"]) span {
+     color: var(--text);
+     font-size: 14px;
+ }
+
+.field-group {
+     display: flex;
+     flex-direction: column;
+     gap: 10px;
  }
 
  input,
