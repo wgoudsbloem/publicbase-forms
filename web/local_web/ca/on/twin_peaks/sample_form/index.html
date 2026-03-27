@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+
+    <head>
+        <meta charset="UTF-8" />
+        <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+        <link href="/base.css" rel="stylesheet" />
+        <script src="/base.js" defer></script>
+        <title>Sample Intake Form 3</title>
+    </head>
+
+    <body>
+        <main>
+            <header>
+                <h1>Sample Intake Form 3</h1>
+                <p>Example form showing all supported field types.</p>
+            </header>
+            <form autocomplete="off">
+                <section>
+                    <fieldset>
+                        <label><span>First name</span><input type="text" name="first_name" required /></label>
+                        <label><span>Last name</span><input type="text" name="last_name" required /></label>
+                        <label><span>Phone</span><input type="text" name="phone" placeholder="555-123-4567" required /></label>
+                        <label><span>Email</span><input type="email" name="email" placeholder="you@example.com" /></label>
+                        <div class="field-group">
+                            <span>Preferred contact*</span>
+                            <label>
+                                <input type="radio" name="preference" value="PHONE" required />
+                                Phone
+                            </label>
+                            <label>
+                                <input type="radio" name="preference" value="EMAIL" required />
+                                Email
+                            </label>
+                        </div>
+                        <label><span>Short text</span><input type="text" name="short_text" placeholder="Enter text" required /></label>
+                        <label><span>Email address</span><input type="email" name="email_address" placeholder="name@example.com" required /></label>
+                        <label><span>Number input (between 0-100)</span><input type="number" name="number_input" placeholder="Optional" min="" max="100" /></label>
+                        <label><span>Date input (between today and 12 months after today)</span><input type="date" name="date_input" required min="2026-03-27" max="2027-03-27" data-date-rule-bound="true" data-min-value="" data-max-value="" data-min-rule="{&quot;mode&quot;:&quot;relative_today&quot;,&quot;unit&quot;:&quot;days&quot;,&quot;amount&quot;:0,&quot;direction&quot;:&quot;plus&quot;}" data-max-rule="{&quot;mode&quot;:&quot;relative_today&quot;,&quot;unit&quot;:&quot;months&quot;,&quot;amount&quot;:12,&quot;direction&quot;:&quot;plus&quot;}" /></label>
+                        <label><span>Currency input</span><input type="number" name="currency_input" placeholder="0.00" step="0.01" min="" max="5000" /></label>
+                        <label>
+                            <span>Long text (between 25 and 500 characters)</span>
+                            <textarea name="long_text" rows="4" placeholder="Enter details" minlength="25" maxlength="500" data-character-count="true"></textarea>
+                            <small class="textarea-word-count" aria-live="polite"></small>
+                        </label>
+                        <label>
+                            <span>Dropdown choice</span>
+                            <select name="dropdown_choice" required>
+                                <option value="">Select an option</option>
+                                <option value="Basic">Basic</option>
+                                <option value="Standard" selected>Standard</option>
+                                <option value="Premium">Premium</option>
+                            </select>
+                        </label>
+                        <label>
+                            <input type="checkbox" name="checkbox_choice" value="true" checked />
+                            <span>Checkbox choice</span>
+                        </label>
+                        <div class="field-group">
+                            <span>Radio choice*</span>
+                            <label>
+                                <input type="radio" name="radio_choice" value="Option a" required />
+                                Option a
+                            </label>
+                            <label>
+                                <input type="radio" name="radio_choice" value="Option b" required />
+                                Option b
+                            </label>
+                            <label>
+                                <input type="radio" name="radio_choice" value="Option c" required />
+                                Option c
+                            </label>
+                        </div>
+                        <p>
+                        <h2>Before you begin</h2>
+                        <p>Please complete all required fields.</p>
+                        </p>
+                    </fieldset>
+                </section>
+                <button id="submit-btn" type="submit">Submit request</button>
+            </form>
+        </main>
+    </body>
+
+</html>

@@ -46,6 +46,31 @@ const attachCapitalization = () => {
     });
 };
 
+const attachTextareaCounters = () => {
+    if (!form) return;
+    const fields = form.querySelectorAll('textarea[data-character-count="true"]');
+    fields.forEach((field) => {
+        if (field.dataset.charCountBound === 'true') return;
+        field.dataset.charCountBound = 'true';
+
+        let counter = field.nextElementSibling;
+        if (!counter || !counter.classList.contains('textarea-word-count')) {
+            counter = document.createElement('small');
+            counter.className = 'textarea-word-count';
+            counter.setAttribute('aria-live', 'polite');
+            field.insertAdjacentElement('afterend', counter);
+        }
+
+        const updateCounter = () => {
+            const count = String(field.value || '').length;
+            counter.textContent = `${count} character${count === 1 ? '' : 's'}`;
+        };
+
+        field.addEventListener('input', updateCounter);
+        updateCounter();
+    });
+};
+
 if (submitBtn) {
     submitBtn.addEventListener('click', async () => {
 
@@ -178,3 +203,77 @@ const showConfirmationModal = (code, redirectTo) => {
 
 initFormCode();
 attachCapitalization();
+attachTextareaCounters();
+
+// Date rule application logic
+(() => {
+    const parseDate = (value) => /^\d{4}-\d{2}-\d{2}$/.test(String(value || '').trim()) ? String(value).trim() : null;
+    const formatDate = (date) => {
+        if (!(date instanceof Date) || Number.isNaN(date.getTime())) return null;
+        const year = date.getFullYear();
+        const month = String(date.getMonth() + 1).padStart(2, '0');
+        const day = String(date.getDate()).padStart(2, '0');
+        return `${year}-${month}-${day}`;
+    };
+    const parseParts = (value) => {
+        const normalized = parseDate(value);
+        if (!normalized) return null;
+        const [year, month, day] = normalized.split('-').map(Number);
+        return { year, month, day };
+    };
+    const addDays = (value, delta) => {
+        const parts = parseParts(value);
+        if (!parts) return null;
+        const date = new Date(parts.year, parts.month - 1, parts.day);
+        date.setDate(date.getDate() + delta);
+        return formatDate(date);
+    };
+    const addMonths = (value, delta) => {
+        const parts = parseParts(value);
+        if (!parts) return null;
+        const totalMonths = (parts.year * 12) + (parts.month - 1) + delta;
+        const year = Math.floor(totalMonths / 12);
+        const monthIndex = ((totalMonths % 12) + 12) % 12;
+        const maxDay = new Date(year, monthIndex + 1, 0).getDate();
+        const day = Math.min(parts.day, maxDay);
+        return formatDate(new Date(year, monthIndex, day));
+    };
+    const today = () => formatDate(new Date());
+    const resolveRule = (fallbackValue, rawRule) => {
+        let rule = null;
+        try {
+            rule = rawRule ? JSON.parse(rawRule) : null;
+        } catch {
+            rule = null;
+        }
+        const mode = String(rule?.mode || '').trim().toLowerCase();
+        if (!mode) return parseDate(fallbackValue);
+        if (mode === 'fixed') {
+            return parseDate(rule.baseDate);
+        }
+        const amount = Number(rule.amount);
+        if (!Number.isInteger(amount) || amount < 0) return parseDate(fallbackValue);
+        const direction = String(rule.direction || '').trim().toLowerCase() === 'minus' ? -1 : 1;
+        const unit = ['days', 'weeks', 'months'].includes(String(rule.unit || '').trim().toLowerCase())
+            ? String(rule.unit).trim().toLowerCase()
+            : 'days';
+        const baseDate = mode === 'relative_today' ? today() : parseDate(rule.baseDate);
+        if (!baseDate) return parseDate(fallbackValue);
+        const delta = amount * direction;
+        if (unit === 'months') return addMonths(baseDate, delta);
+        return addDays(baseDate, unit === 'weeks' ? delta * 7 : delta);
+    };
+    const applyRules = () => {
+        document.querySelectorAll('input[type="date"][data-date-rule-bound]').forEach((input) => {
+            const minValue = resolveRule(input.getAttribute('data-min-value'), input.getAttribute('data-min-rule'));
+            const maxValue = resolveRule(input.getAttribute('data-max-value'), input.getAttribute('data-max-rule'));
+            if (minValue) input.min = minValue;
+            if (maxValue) input.max = maxValue;
+        });
+    };
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', applyRules);
+    } else {
+        applyRules();
+    }
+})();
