@@ -80,7 +80,7 @@
      padding: 16px;
  }
 
- fieldset {
+fieldset {
      border: 0;
      margin: 0;
      padding: 0;
@@ -88,6 +88,17 @@
      flex-direction: column;
      gap: 10px;
  }
+
+fieldset fieldset {
+    min-inline-size: 0;
+}
+
+legend {
+    padding: 0;
+    margin: 0 0 10px;
+    font-size: 13px;
+    color: var(--text);
+}
 
  label {
      display: flex;
@@ -143,12 +154,6 @@ label:has(input[type="checkbox"]) span {
 label:has(input[type="radio"]) span {
      color: var(--text);
      font-size: 14px;
- }
-
-.field-group {
-     display: flex;
-     flex-direction: column;
-     gap: 10px;
  }
 
  input,
