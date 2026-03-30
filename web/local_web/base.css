@@ -297,3 +297,72 @@ button[disabled] {
     justify-content: flex-end;
     margin-top: 16px;
 }
+
+ .altcha-shell {
+     display: flex;
+     flex-direction: column;
+     gap: 10px;
+     padding: 16px;
+     border: 1px solid var(--border);
+     border-radius: var(--field-radius);
+     background: linear-gradient(180deg, rgba(92, 124, 255, 0.07), rgba(255, 255, 255, 0.98));
+ }
+
+ .altcha-shell[data-altcha-state="verified"] {
+     border-color: #86bf91;
+     background: linear-gradient(180deg, rgba(22, 163, 74, 0.08), rgba(255, 255, 255, 0.98));
+ }
+
+ .altcha-shell[data-altcha-state="error"],
+ .altcha-shell[data-altcha-state="expired"] {
+     border-color: #d0a3a3;
+     background: linear-gradient(180deg, rgba(185, 28, 28, 0.08), rgba(255, 255, 255, 0.98));
+ }
+
+ .altcha-title,
+ .altcha-hint,
+ .altcha-status {
+     margin: 0;
+ }
+
+ .altcha-title {
+     font-size: 14px;
+     font-weight: 700;
+ }
+
+ .altcha-hint,
+ .altcha-status {
+     font-size: 13px;
+     color: var(--muted);
+ }
+
+ .altcha-status[data-tone="success"] {
+     color: #1f6f35;
+ }
+
+ .altcha-status[data-tone="warning"] {
+     color: #946200;
+ }
+
+ .altcha-status[data-tone="error"] {
+     color: #a12828;
+ }
+
+ .altcha-shell altcha-widget {
+     align-self: flex-start;
+     width: min(100%, 320px);
+     max-width: 100%;
+     --altcha-border-width: 1px;
+     --altcha-border-radius: var(--field-radius);
+     --altcha-color-base: var(--white);
+     --altcha-color-border: var(--border);
+     --altcha-color-border-focus: var(--primary);
+     --altcha-color-text: var(--text);
+     --altcha-color-footer-bg: var(--gray-50);
+ }
+
+ @media (max-width: 640px) {
+     .altcha-shell altcha-widget {
+         width: 100%;
+     }
+ }

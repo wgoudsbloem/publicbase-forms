@@ -2,7 +2,15 @@ const submitBtn = document.getElementById('submit-btn');
 const form = document.querySelector('form');
 const FORM_API_URL = 'https://api.publicbase.com/form';
 const FORM_CODE_API_BASE = 'https://api.publicbase.com/form/code';
+const FORM_ALTCHA_CHALLENGE_URL = 'https://api.publicbase.com/form/challenge';
+const ALTCHA_SCRIPT_URL = 'https://cdn.jsdelivr.net/gh/altcha-org/altcha@main/dist/altcha.min.js';
 let issuedFormCode = null;
+let altchaScriptPromise = null;
+let altchaContextPromise = Promise.resolve(null);
+let formCodePromise = Promise.resolve(null);
+let isSubmitting = false;
+
+const normalizeFieldKey = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
 
 const getFormPathFromUrl = () => {
     const path = window.location.pathname || '/';
@@ -19,8 +27,14 @@ const collectFormData = (form) => {
         const label = field.closest('label');
         const labelTitle = label ? label.querySelector('.label-title') : null;
         const rawKey = field.name || (labelTitle ? labelTitle.textContent : '') || field.id || 'field';
-        const key = rawKey.trim().toLowerCase().replace(/\s+/g, '_');
+        const key = normalizeFieldKey(rawKey);
         values[key] = field.type === 'checkbox' ? Boolean(field.checked) : field.value;
+    });
+    const submittedValues = new FormData(form);
+    submittedValues.forEach((value, rawKey) => {
+        const key = normalizeFieldKey(rawKey);
+        if (!key || Object.prototype.hasOwnProperty.call(values, key)) return;
+        values[key] = typeof value === 'string' ? value : value?.name || '';
     });
     return values;
 };
@@ -71,61 +85,12 @@ const attachTextareaCounters = () => {
     });
 };
 
-if (submitBtn) {
-    submitBtn.addEventListener('click', async () => {
-
-        if (!form) return;
-        if (typeof form.reportValidity === 'function') {
-            if (!form.reportValidity()) return;
-        } else if (!form.checkValidity()) {
-            return;
-        }
-
-        if (!issuedFormCode) {
-            console.warn('Missing issued form code.');
-            return;
-        }
-
-        const payload = {
-            code: issuedFormCode,
-            data: collectFormData(form)
-        };
-
-        submitBtn.disabled = true;
-        try {
-            const res = await fetch(FORM_API_URL, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            if (!res.ok) {
-                console.warn('Form submission failed', { status: res.status });
-                return;
-            }
-            const json = await res.json().catch(() => null);
-            const confirmationCode = json?.confirmationCode || null;
-            const formPath = getFormPathFromUrl();
-            const segments = formPath.split('/').filter(Boolean);
-            const root = segments.length >= 3 ? `/${segments.slice(0, 3).join('/')}` : '/';
-            if (confirmationCode) {
-                showConfirmationModal(confirmationCode, root);
-            } else {
-                window.location.assign(root);
-            }
-        } catch (err) {
-            console.warn('Form submission error', err);
-        } finally {
-            submitBtn.disabled = false;
-        }
-    });
-}
-
 const initFormCode = async () => {
-    if (!form) return;
+    if (!form) return null;
     const formPath = getFormPathFromUrl();
     if (!formPath) {
         console.warn('Missing form path in URL.');
-        return;
+        return null;
     }
     try {
         const encodedPath = btoa(formPath);
@@ -134,12 +99,14 @@ const initFormCode = async () => {
         });
         if (!res.ok) {
             console.warn('Failed to fetch form code', { status: res.status });
-            return;
+            return null;
         }
         const json = await res.json();
         issuedFormCode = json?.code || null;
+        return issuedFormCode;
     } catch (err) {
         console.warn('Form code request error', err);
+        return null;
     }
 };
 
@@ -201,9 +168,271 @@ const showConfirmationModal = (code, redirectTo) => {
     document.body.appendChild(overlay);
 };
 
-initFormCode();
+const loadAltchaScript = async () => {
+    if (window.customElements?.get('altcha-widget')) return;
+    if (!altchaScriptPromise) {
+        altchaScriptPromise = new Promise((resolve, reject) => {
+            const existing = document.querySelector('script[data-altcha-script="true"]');
+            if (existing) {
+                resolve();
+                existing.addEventListener(
+                    'error',
+                    () => {
+                        altchaScriptPromise = null;
+                        reject(new Error('ALTCHA script failed to load.'));
+                    },
+                    { once: true }
+                );
+                return;
+            }
+            const script = document.createElement('script');
+            script.type = 'module';
+            script.async = true;
+            script.defer = true;
+            script.src = ALTCHA_SCRIPT_URL;
+            script.dataset.altchaScript = 'true';
+            script.addEventListener('load', resolve, { once: true });
+            script.addEventListener(
+                'error',
+                () => {
+                    altchaScriptPromise = null;
+                    reject(new Error('ALTCHA script failed to load.'));
+                },
+                { once: true }
+            );
+            document.head.appendChild(script);
+        });
+    }
+    await altchaScriptPromise;
+    if (window.customElements?.whenDefined) {
+        await window.customElements.whenDefined('altcha-widget');
+    }
+};
+
+const setAltchaStatus = (context, message, tone = 'idle') => {
+    if (!context?.status) return;
+    context.status.textContent = message;
+    context.status.dataset.tone = tone;
+};
+
+const syncAltchaState = (context, state) => {
+    if (!context?.shell) return;
+    context.shell.dataset.altchaState = state;
+    if (state === 'verified') {
+        setAltchaStatus(context, 'Verification complete. You can submit the form.', 'success');
+        return;
+    }
+    if (state === 'verifying') {
+        setAltchaStatus(context, 'Verifying challenge...', 'warning');
+        return;
+    }
+    if (state === 'error') {
+        setAltchaStatus(context, 'Verification failed. Please try again.', 'error');
+        return;
+    }
+    if (state === 'expired') {
+        setAltchaStatus(context, 'Verification expired. Please verify again.', 'warning');
+        return;
+    }
+    if (state === 'code') {
+        setAltchaStatus(context, 'Complete the ALTCHA challenge to continue.', 'warning');
+        return;
+    }
+    setAltchaStatus(context, 'Complete the verification step before submitting.', 'idle');
+};
+
+const isAltchaVerified = (context) => {
+    if (!context?.widget) return true;
+    try {
+        return context.widget.getState?.() === 'verified';
+    } catch {
+        return context.shell?.dataset.altchaState === 'verified';
+    }
+};
+
+const requestAltchaVerification = (context) => {
+    if (!context?.widget) return;
+    context.pendingSubmit = true;
+    syncAltchaState(context, context.widget.getState?.() || 'unverified');
+    context.shell.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (context.widget.getState?.() === 'verifying') return;
+    try {
+        context.widget.verify();
+    } catch (err) {
+        console.warn('ALTCHA verification could not be started', err);
+        syncAltchaState(context, 'error');
+    }
+};
+
+const initAltcha = async () => {
+    if (!form) return null;
+    const configuredMode = String(form.dataset.altchaMode || '').trim().toLowerCase();
+    const mode = ['off', 'false', 'disabled', 'none'].includes(configuredMode)
+        ? ''
+        : (configuredMode || 'server');
+    if (!mode) return null;
+
+    const shell = document.createElement('div');
+    shell.className = 'altcha-shell';
+    shell.dataset.altchaState = 'loading';
+
+    const title = document.createElement('p');
+    title.className = 'altcha-title';
+    title.textContent = 'Human verification';
+
+    const hint = document.createElement('p');
+    hint.className = 'altcha-hint';
+    hint.textContent = mode === 'test'
+        ? 'This form uses ALTCHA test mode, so verification works without a live challenge endpoint.'
+        : 'Complete the ALTCHA verification before submitting this form.';
+
+    const widget = document.createElement('altcha-widget');
+    widget.setAttribute('name', 'altcha');
+    if (mode === 'test') {
+        widget.setAttribute('test', '');
+    }
+
+    const status = document.createElement('small');
+    status.className = 'altcha-status';
+    status.setAttribute('aria-live', 'polite');
+
+    shell.append(title, hint, widget, status);
+
+    const submitControl = form.querySelector('#submit-btn, button[type="submit"], input[type="submit"]');
+    form.insertBefore(shell, submitControl || null);
+
+    const context = {
+        mode,
+        widget,
+        shell,
+        status,
+        pendingSubmit: false,
+        loadError: null
+    };
+
+    syncAltchaState(context, 'unverified');
+
+    if (mode !== 'test') {
+        const formCode = await formCodePromise;
+        if (!formCode) {
+            context.loadError = new Error('Missing form code for ALTCHA challenge.');
+            syncAltchaState(context, 'error');
+            setAltchaStatus(context, 'ALTCHA could not start because no form code was issued.', 'error');
+            return context;
+        }
+        widget.setAttribute('challengeurl', `${FORM_ALTCHA_CHALLENGE_URL}?code=${encodeURIComponent(formCode)}`);
+    }
+
+    try {
+        await loadAltchaScript();
+    } catch (err) {
+        context.loadError = err;
+        console.warn('ALTCHA failed to initialize', err);
+        syncAltchaState(context, 'error');
+        setAltchaStatus(context, 'ALTCHA could not load. Submission is blocked until it is available.', 'error');
+        return context;
+    }
+
+    widget.addEventListener('load', () => {
+        if (!isAltchaVerified(context)) {
+            syncAltchaState(context, widget.getState?.() || 'unverified');
+        }
+    });
+
+    widget.addEventListener('statechange', (event) => {
+        const state = String(event.detail?.state || 'unverified');
+        syncAltchaState(context, state);
+        if (state === 'verified' && context.pendingSubmit) {
+            context.pendingSubmit = false;
+            submitForm();
+        }
+    });
+
+    widget.addEventListener('verified', () => {
+        syncAltchaState(context, 'verified');
+        if (!context.pendingSubmit) return;
+        context.pendingSubmit = false;
+        submitForm();
+    });
+
+    return context;
+};
+
+const submitForm = async () => {
+    if (!form || isSubmitting) return;
+    if (typeof form.reportValidity === 'function') {
+        if (!form.reportValidity()) return;
+    } else if (!form.checkValidity()) {
+        return;
+    }
+
+    const formCode = await formCodePromise;
+    if (!formCode) {
+        console.warn('Missing issued form code.');
+        return;
+    }
+    issuedFormCode = formCode;
+
+    const altcha = await altchaContextPromise;
+    if (altcha?.loadError) {
+        console.warn('ALTCHA is required but unavailable.');
+        return;
+    }
+    if (altcha && !isAltchaVerified(altcha)) {
+        requestAltchaVerification(altcha);
+        return;
+    }
+
+    const payload = {
+        code: formCode,
+        data: collectFormData(form)
+    };
+
+    isSubmitting = true;
+    if (submitBtn) {
+        submitBtn.disabled = true;
+    }
+    try {
+        const res = await fetch(FORM_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+        if (!res.ok) {
+            console.warn('Form submission failed', { status: res.status });
+            return;
+        }
+        const json = await res.json().catch(() => null);
+        const confirmationCode = json?.confirmationCode || null;
+        const formPath = getFormPathFromUrl();
+        const segments = formPath.split('/').filter(Boolean);
+        const root = segments.length >= 3 ? `/${segments.slice(0, 3).join('/')}` : '/';
+        if (confirmationCode) {
+            showConfirmationModal(confirmationCode, root);
+        } else {
+            window.location.assign(root);
+        }
+    } catch (err) {
+        console.warn('Form submission error', err);
+    } finally {
+        isSubmitting = false;
+        if (submitBtn) {
+            submitBtn.disabled = false;
+        }
+    }
+};
+
+formCodePromise = initFormCode();
 attachCapitalization();
 attachTextareaCounters();
+altchaContextPromise = initAltcha();
+
+if (form) {
+    form.addEventListener('submit', (event) => {
+        event.preventDefault();
+        submitForm();
+    });
+}
 
 // Date rule application logic
 (() => {

@@ -44,6 +44,10 @@ Parameters:
     Type: String
     NoEcho: true
     Description: Database password for publicbase.
+  AltchaHmacSecretName:
+    Type: String
+    Default: forms-altcha-hmac-key
+    Description: Secrets Manager secret name storing the ALTCHA HMAC key.
 
 Resources:
 
@@ -109,11 +113,31 @@ Resources:
           DDB_REQUEST_TIMEOUT_MS: "2000"
           SNS_REQUEST_TIMEOUT_MS: "8000"
           FORM_SUBMISSIONS_TOPIC_ARN: !Ref FormSubmissionsTopic
+          ALTCHA_HMAC_KEY: !Sub "{{resolve:secretsmanager:${AltchaHmacSecretName}:SecretString}}"
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref FormCodesTable
         - SNSPublishMessagePolicy:
             TopicName: !GetAtt FormSubmissionsTopic.TopicName
+
+  FormChallengeGet:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: form-challenge-get
+      CodeUri: form-challenge-get/
+      Handler: index.handler
+      Timeout: 10
+      Environment:
+        Variables:
+          FORM_CODES_TABLE: !Ref FormCodesTable
+          DEBUG: "true"
+          DDB_REQUEST_TIMEOUT_MS: "2000"
+          ALTCHA_HMAC_KEY: !Sub "{{resolve:secretsmanager:${AltchaHmacSecretName}:SecretString}}"
+          ALTCHA_MAX_NUMBER: "50000"
+          ALTCHA_EXPIRE_SECONDS: "300"
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FormCodesTable
 
   FormCodeGet:
     Type: AWS::Serverless::Function
@@ -180,6 +204,30 @@ Resources:
       FunctionName: !Ref FormPost
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PublicHttpApiId}/*/POST/form"
+
+  PublicHttpApiFormChallengeGetIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref PublicHttpApiId
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FormChallengeGet.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  PublicHttpApiFormChallengeGetRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref PublicHttpApiId
+      RouteKey: "GET /form/challenge"
+      Target: !Sub "integrations/${PublicHttpApiFormChallengeGetIntegration}"
+
+  PublicHttpApiFormChallengeGetPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref FormChallengeGet
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PublicHttpApiId}/*/GET/form/challenge"
+
 
 Outputs:
   FormSubmissionsTopicArn:

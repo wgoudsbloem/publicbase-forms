@@ -1,5 +1,6 @@
 import pg from 'pg';
 import crypto from 'crypto';
+import { extractParams, verifySolution } from 'altcha-lib';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
@@ -34,6 +35,7 @@ const sns = new SNSClient({
   })
 });
 const formCodesTable = process.env.FORM_CODES_TABLE;
+const altchaHmacKey = process.env.ALTCHA_HMAC_KEY || '';
 const debugEnabled = String(process.env.DEBUG || '').toLowerCase() === 'true';
 const connectTimeoutMs = Number(process.env.DB_CONNECT_TIMEOUT_MS) || 3000;
 const queryTimeoutMs = Number(process.env.DB_QUERY_TIMEOUT_MS) || 3000;
@@ -72,6 +74,12 @@ const withTimeout = (promise, ms, label) =>
     )
   ]);
 
+const normalizeFormPath = (value) =>
+  String(value || '')
+    .replace(/\/+$/, '')
+    .replace(/\/index\.html$/, '')
+    .replace(/^\/?/, '/');
+
 export const handler = async (event) => {
   const requestId = event?.requestContext?.requestId || null;
   const method = (event?.requestContext?.http?.method || event?.httpMethod || '').toUpperCase();
@@ -96,6 +104,15 @@ export const handler = async (event) => {
   const data = payload?.data ?? null;
   if (!code || !data) {
     logDebug('Missing code or data in payload', { requestId });
+    return response(400);
+  }
+  if (!altchaHmacKey) {
+    logError('ALTCHA HMAC key is not configured', { requestId });
+    return response(500);
+  }
+  const altchaPayload = typeof data?.altcha === 'string' ? data.altcha : null;
+  if (!altchaPayload) {
+    logDebug('Missing ALTCHA payload in submission', { requestId });
     return response(400);
   }
 
@@ -130,16 +147,34 @@ export const handler = async (event) => {
       logDebug('Form code expired', { requestId, code, expiresAt: codeItem.expires_at });
       return response(410);
     }
+    const normalizedPath = normalizeFormPath(codeItem.form_path);
+    let altchaVerified = false;
+    let altchaParams = {};
+    try {
+      altchaVerified = await verifySolution(altchaPayload, altchaHmacKey);
+      altchaParams = extractParams(altchaPayload);
+    } catch (err) {
+      logDebug('ALTCHA verification raised an error', { requestId, error: err?.message });
+      return response(400);
+    }
+    if (!altchaVerified) {
+      logDebug('ALTCHA verification failed', { requestId, code });
+      return response(403);
+    }
+    if (String(altchaParams.code || '') !== String(code) || String(altchaParams.form || '') !== normalizedPath) {
+      logDebug('ALTCHA payload does not match the form code', {
+        requestId,
+        code,
+        altchaCode: altchaParams.code,
+        altchaForm: altchaParams.form
+      });
+      return response(403);
+    }
     logDebug('DB connect start', { requestId });
     const client = await withTimeout(pool.connect(), connectTimeoutMs, 'DB connect');
     logDebug('DB connect ok', { requestId });
     let formId;
     try {
-      const rawPath = String(codeItem.form_path || '');
-      const normalizedPath = rawPath
-        .replace(/\/+$/, '')
-        .replace(/\/index\.html$/, '')
-        .replace(/^\/?/, '/');
       const result = await withTimeout(
         client.query(
           `select id
@@ -175,7 +210,8 @@ export const handler = async (event) => {
     );
     const insertClient = await withTimeout(pool.connect(), connectTimeoutMs, 'DB connect');
     try {
-      const submissionData = { ...data, confirmation_code: confirmationCode };
+      const { altcha, ...submissionFields } = data;
+      const submissionData = { ...submissionFields, confirmation_code: confirmationCode };
       await withTimeout(
         insertClient.query(
           `insert into publish.submissions (id, form_id, data, confirmation_code)
