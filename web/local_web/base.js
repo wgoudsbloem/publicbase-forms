@@ -68,10 +68,10 @@ const attachTextareaCounters = () => {
         field.dataset.charCountBound = 'true';
 
         let counter = field.nextElementSibling;
-        if (!counter || !counter.classList.contains('textarea-word-count')) {
+        if (!counter || !counter.hasAttribute('data-character-count-output')) {
             counter = document.createElement('small');
-            counter.className = 'textarea-word-count';
             counter.setAttribute('aria-live', 'polite');
+            counter.setAttribute('data-character-count-output', '');
             field.insertAdjacentElement('afterend', counter);
         }
 

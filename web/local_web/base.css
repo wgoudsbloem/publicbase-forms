@@ -191,7 +191,7 @@ label:has(input[type="radio"]) span {
      resize: vertical;
  }
 
- .textarea-word-count {
+ [data-character-count-output] {
      display: block;
      margin-top: 4px;
      text-align: right;
