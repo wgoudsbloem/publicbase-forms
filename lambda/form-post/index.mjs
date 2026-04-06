@@ -1,21 +1,11 @@
-import pg from 'pg';
 import crypto from 'crypto';
 import { extractParams, verifySolution } from 'altcha-lib';
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, GetCommand, UpdateCommand } from '@aws-sdk/lib-dynamodb';
+import { LambdaClient, InvokeCommand } from '@aws-sdk/client-lambda';
 import { SNSClient, PublishCommand } from '@aws-sdk/client-sns';
 import { NodeHttpHandler } from '@smithy/node-http-handler';
 
-const { Pool } = pg;
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME || 'publicbase',
-  port: Number(process.env.DB_PORT) || 5432,
-  ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined,
-  connectionTimeoutMillis: Number(process.env.DB_CONNECT_TIMEOUT_MS) || 3000
-});
 const ddbTimeoutMs = Number(process.env.DDB_REQUEST_TIMEOUT_MS) || 2000;
 const awsRegion = process.env.AWS_REGION || process.env.AWS_DEFAULT_REGION || 'ca-central-1';
 const ddb = DynamoDBDocumentClient.from(
@@ -34,11 +24,18 @@ const sns = new SNSClient({
     requestTimeout: Number(process.env.SNS_REQUEST_TIMEOUT_MS) || 8000
   })
 });
+const lambda = new LambdaClient({
+  region: awsRegion,
+  requestHandler: new NodeHttpHandler({
+    connectionTimeout: Number(process.env.LAMBDA_INVOKE_TIMEOUT_MS) || 5000,
+    requestTimeout: Number(process.env.LAMBDA_INVOKE_TIMEOUT_MS) || 5000
+  })
+});
 const formCodesTable = process.env.FORM_CODES_TABLE;
 const altchaHmacKey = process.env.ALTCHA_HMAC_KEY || '';
+const formPostStoreFunctionName = String(process.env.FORM_POST_STORE_FUNCTION_NAME || '').trim();
+const submissionEmailTopicArn = String(process.env.SUBMISSION_EMAIL_TOPIC_ARN || '').trim();
 const debugEnabled = String(process.env.DEBUG || '').toLowerCase() === 'true';
-const connectTimeoutMs = Number(process.env.DB_CONNECT_TIMEOUT_MS) || 3000;
-const queryTimeoutMs = Number(process.env.DB_QUERY_TIMEOUT_MS) || 3000;
 const snsTimeoutMs = Number(process.env.SNS_REQUEST_TIMEOUT_MS) || 8000;
 
 const response = (statusCode, body) => ({
@@ -79,6 +76,81 @@ const normalizeFormPath = (value) =>
     .replace(/\/+$/, '')
     .replace(/\/index\.html$/, '')
     .replace(/^\/?/, '/');
+
+const decodeLambdaPayload = (payload) => {
+  if (!payload) return null;
+  const raw = Buffer.from(payload).toString('utf-8').trim();
+  if (!raw) return null;
+  return JSON.parse(raw);
+};
+
+const storeSubmission = async ({ requestId, normalizedPath, submissionId, confirmationCode, submissionData }) => {
+  if (!formPostStoreFunctionName) {
+    throw new Error('FORM_POST_STORE_FUNCTION_NAME is not configured');
+  }
+
+  const invokeResult = await lambda.send(new InvokeCommand({
+    FunctionName: formPostStoreFunctionName,
+    InvocationType: 'RequestResponse',
+    Payload: Buffer.from(JSON.stringify({
+      requestId,
+      normalizedPath,
+      submissionId,
+      confirmationCode,
+      submissionData
+    }))
+  }));
+
+  if (invokeResult.FunctionError) {
+    throw new Error(`Store function failed: ${invokeResult.FunctionError}`);
+  }
+
+  const parsed = decodeLambdaPayload(invokeResult.Payload);
+  if (!parsed || typeof parsed !== 'object') {
+    throw new Error('Store function returned an empty response');
+  }
+
+  const statusCode = Number(parsed.statusCode) || 500;
+  let body = parsed.body;
+  if (typeof body === 'string') {
+    body = body ? JSON.parse(body) : null;
+  }
+
+  return {
+    statusCode,
+    body: body && typeof body === 'object' ? body : null
+  };
+};
+
+const publishEmailJobs = async ({ requestId, submissionId, emailJobs }) => {
+  if (!submissionEmailTopicArn) {
+    logDebug('Submission email topic is not configured', { requestId });
+    return;
+  }
+
+  for (const job of emailJobs) {
+    if (!job?.to) continue;
+    try {
+      await withTimeout(
+        sns.send(
+          new PublishCommand({
+            TopicArn: submissionEmailTopicArn,
+            Message: JSON.stringify(job)
+          })
+        ),
+        snsTimeoutMs,
+        'SNS publish'
+      );
+    } catch (err) {
+      logError('Submission email job publish failed', {
+        requestId,
+        submissionId,
+        to: job.to,
+        error: err?.message
+      });
+    }
+  }
+};
 
 export const handler = async (event) => {
   const requestId = event?.requestContext?.requestId || null;
@@ -170,84 +242,48 @@ export const handler = async (event) => {
       });
       return response(403);
     }
-    logDebug('DB connect start', { requestId });
-    const client = await withTimeout(pool.connect(), connectTimeoutMs, 'DB connect');
-    logDebug('DB connect ok', { requestId });
-    let formId;
-    try {
-      const result = await withTimeout(
-        client.query(
-          `select id
-           from forms.forms
-           where code = $1
-           limit 1`,
-          [normalizedPath]
-        ),
-        queryTimeoutMs,
-        'DB query'
-      );
-      if (result.rowCount === 0) {
-        logDebug('Form path not found', { requestId, formPath: codeItem.form_path });
-        return response(404);
-      }
-      formId = result.rows[0].id;
-    } finally {
-      client.release();
+    const { altcha, ...submissionFields } = data;
+    const submissionData = { ...submissionFields, confirmation_code: confirmationCode };
+    const storeResult = await storeSubmission({
+      requestId,
+      normalizedPath,
+      submissionId,
+      confirmationCode,
+      submissionData
+    });
+
+    if (storeResult.statusCode === 404) {
+      logDebug('Form path not found', { requestId, formPath: codeItem.form_path });
+      return response(404);
     }
-    await withTimeout(
-      ddb.send(
-        new UpdateCommand({
-          TableName: formCodesTable,
-          Key: { code },
-          UpdateExpression: 'set expires_at = :expired',
-          ExpressionAttributeValues: {
-            ':expired': now - 1
-          }
-        })
-      ),
-      ddbTimeoutMs,
-      'DynamoDB update'
-    );
-    const insertClient = await withTimeout(pool.connect(), connectTimeoutMs, 'DB connect');
-    try {
-      const { altcha, ...submissionFields } = data;
-      const submissionData = { ...submissionFields, confirmation_code: confirmationCode };
-      await withTimeout(
-        insertClient.query(
-          `insert into publish.submissions (id, form_id, data, confirmation_code)
-           values ($1, $2, $3, $4)`,
-          [submissionId, formId, submissionData, confirmationCode]
-        ),
-        queryTimeoutMs,
-        'DB query'
-      );
-    } finally {
-      insertClient.release();
+    if (storeResult.statusCode >= 400 || !storeResult.body?.ok || !storeResult.body?.formId) {
+      logError('Store lambda rejected submission', { requestId, statusCode: storeResult.statusCode });
+      return response(500);
     }
+
+    const formId = storeResult.body.formId;
+    const emailJobs = Array.isArray(storeResult.body.emailJobs) ? storeResult.body.emailJobs : [];
     logDebug('Submission stored', { requestId, submissionId, formId });
-    if (process.env.FORM_SUBMISSIONS_TOPIC_ARN) {
-      try {
-        logDebug('SNS publish start', { requestId });
-        await withTimeout(
-          sns.send(
-            new PublishCommand({
-              TopicArn: process.env.FORM_SUBMISSIONS_TOPIC_ARN,
-              Message: JSON.stringify({
-                submission_id: submissionId,
-                form_id: formId,
-                confirmation_code: confirmationCode,
-                submitted_at: new Date().toISOString()
-              })
-            })
-          ),
-          snsTimeoutMs,
-          'SNS publish'
-        );
-        logDebug('SNS publish ok', { requestId });
-      } catch (err) {
-        logError('SNS publish failed', { requestId, error: err?.message });
-        throw err;
-      }
+    if (emailJobs.length) {
+      await publishEmailJobs({ requestId, submissionId, emailJobs });
+    }
+    try {
+      await withTimeout(
+        ddb.send(
+          new UpdateCommand({
+            TableName: formCodesTable,
+            Key: { code },
+            UpdateExpression: 'set expires_at = :expired',
+            ExpressionAttributeValues: {
+              ':expired': now - 1
+            }
+          })
+        ),
+        ddbTimeoutMs,
+        'DynamoDB update'
+      );
+    } catch (err) {
+      logError('DynamoDB code expiry failed', { requestId, code, error: err?.message });
     }
     return response(200, { ok: true, id: submissionId, confirmationCode });
   } catch (err) {

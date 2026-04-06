@@ -37,36 +37,12 @@ Parameters:
   DbHost:
     Type: String
     Description: Database host for publicbase.
-  DbUser:
-    Type: String
-    Description: Database username for publicbase.
-  DbPassword:
-    Type: String
-    NoEcho: true
-    Description: Database password for publicbase.
   AltchaHmacSecretName:
     Type: String
     Default: forms-altcha-hmac-key
     Description: Secrets Manager secret name storing the ALTCHA HMAC key.
 
 Resources:
-
-  FormSubmissionsTopic:
-    Type: AWS::SNS::Topic
-    Properties:
-      TopicName: form-submissions
-
-  SnsInterfaceEndpoint:
-    Type: AWS::EC2::VPCEndpoint
-    Properties:
-      VpcEndpointType: Interface
-      VpcId: !Ref VpcId
-      ServiceName: !Sub "com.amazonaws.${AWS::Region}.sns"
-      PrivateDnsEnabled: true
-      SubnetIds: !Ref LambdaSubnetIds
-      SecurityGroupIds:
-        - sg-0612f82330f2556e3
-
 
   FormCodesTable:
     Type: AWS::DynamoDB::Table
@@ -97,6 +73,34 @@ Resources:
       CodeUri: form-post/
       Handler: index.handler
       Timeout: 10
+      Environment:
+        Variables:
+          FORM_CODES_TABLE: !Ref FormCodesTable
+          DEBUG: "true"
+          DDB_REQUEST_TIMEOUT_MS: "2000"
+          SNS_REQUEST_TIMEOUT_MS: "8000"
+          LAMBDA_INVOKE_TIMEOUT_MS: "5000"
+          SUBMISSION_EMAIL_TOPIC_ARN: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:admin-submission-email
+          FORM_POST_STORE_FUNCTION_NAME: !Ref FormPostStore
+          ALTCHA_HMAC_KEY: !Sub "{{resolve:secretsmanager:${AltchaHmacSecretName}:SecretString}}"
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref FormCodesTable
+        - LambdaInvokePolicy:
+            FunctionName: !Ref FormPostStore
+        - Statement:
+            - Effect: Allow
+              Action:
+                - sns:Publish
+              Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:admin-submission-email
+
+  FormPostStore:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: form-post-store
+      CodeUri: form-post-store/
+      Handler: index.handler
+      Timeout: 10
       VpcConfig:
         SecurityGroupIds:
           - sg-0612f82330f2556e3
@@ -104,21 +108,11 @@ Resources:
       Environment:
         Variables:
           DB_HOST: !Ref DbHost
-          DB_USER: !Ref DbUser
-          DB_PASSWORD: !Ref DbPassword
-          FORM_CODES_TABLE: !Ref FormCodesTable
+          DB_USER: !Sub "{{resolve:secretsmanager:admin-db-credentials:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:admin-db-credentials:SecretString:password}}"
           DEBUG: "true"
           DB_CONNECT_TIMEOUT_MS: "3000"
           DB_QUERY_TIMEOUT_MS: "3000"
-          DDB_REQUEST_TIMEOUT_MS: "2000"
-          SNS_REQUEST_TIMEOUT_MS: "8000"
-          FORM_SUBMISSIONS_TOPIC_ARN: !Ref FormSubmissionsTopic
-          ALTCHA_HMAC_KEY: !Sub "{{resolve:secretsmanager:${AltchaHmacSecretName}:SecretString}}"
-      Policies:
-        - DynamoDBCrudPolicy:
-            TableName: !Ref FormCodesTable
-        - SNSPublishMessagePolicy:
-            TopicName: !GetAtt FormSubmissionsTopic.TopicName
 
   FormChallengeGet:
     Type: AWS::Serverless::Function
@@ -227,9 +221,3 @@ Resources:
       FunctionName: !Ref FormChallengeGet
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PublicHttpApiId}/*/GET/form/challenge"
-
-
-Outputs:
-  FormSubmissionsTopicArn:
-    Description: "SNS Topic ARN for form submissions"
-    Value: !Ref FormSubmissionsTopic
