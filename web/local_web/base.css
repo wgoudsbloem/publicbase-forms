@@ -81,6 +81,90 @@
      padding: 16px;
  }
 
+body > main > section > ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: 12px;
+}
+
+body > main > section > ul > li {
+    margin: 0;
+    padding: 0;
+}
+
+body > main > section article {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+        "title action"
+        "detail action";
+    align-items: center;
+    column-gap: 12px;
+    row-gap: 4px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--shell-radius);
+    background: var(--white);
+}
+
+body > main > section article h2 {
+    margin: 0;
+    grid-area: title;
+    font-size: 1rem;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body > main > section article p {
+    margin: 0;
+    grid-area: detail;
+    color: var(--muted);
+    font-size: 0.95em;
+    line-height: 1.25;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+body > main > section article > a {
+    grid-area: action;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    min-height: 36px;
+    min-width: 120px;
+    padding: 10px 14px;
+    border-radius: var(--button-radius);
+    border: 1px solid var(--button-neutral-border);
+    background: var(--button-neutral-bg);
+    color: var(--button-neutral-fg);
+    font-weight: 600;
+    text-decoration: none;
+    transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease, transform 0.1s ease;
+}
+
+body > main > section article > a:hover {
+    transform: translateY(-1px);
+    background: var(--button-neutral-hover);
+    border-color: var(--button-neutral-hover);
+}
+
+body > main > section article > a:active {
+    transform: translateY(0);
+    background: var(--button-neutral-active);
+    border-color: var(--button-neutral-active);
+}
+
+body > main > section article > a:focus-visible {
+    outline: var(--outline-focus);
+    outline-offset: 2px;
+}
+
 fieldset {
      border: 0;
      margin: 0;
