@@ -42,6 +42,13 @@ const parseEvent = (event) => {
 
 const response = (statusCode, body) => ({ statusCode, body: JSON.stringify(body) });
 
+const formatFieldLabel = (name) =>
+  String(name || '')
+    .trim()
+    .replace(/[_\-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/\b\w/g, (char) => char.toUpperCase()) || 'Field';
+
 const buildSubject = (formName, firstName, lastName) => {
   const namePart = `${lastName} ${firstName}`.trim();
   return namePart ? `${formName}:${namePart}` : formName;
@@ -54,31 +61,64 @@ const stringifyValue = (value) => {
   return JSON.stringify(value);
 };
 
-const buildExtraDataLines = ({ data, includeResults }) => {
-  if (!includeResults) return '';
-  const baseKeys = new Set(['first_name', 'last_name']);
-  const entries = Object.entries(data || {}).filter(([key]) => !baseKeys.has(key));
-  if (!entries.length) return '';
-  return entries.map(([key, value]) => `${key}: ${stringifyValue(value)}`).join('\n');
+const buildOrderedFieldEntries = ({ data, formSchema }) => {
+  const submissionData = data && typeof data === 'object' ? data : {};
+  const orderedEntries = [];
+  const seenKeys = new Set();
+  const schemaFields = [
+    ...(Array.isArray(formSchema?.contact) ? formSchema.contact : []),
+    ...(Array.isArray(formSchema?.fields) ? formSchema.fields : [])
+  ];
+
+  schemaFields.forEach((field) => {
+    const fieldName = String(field?.name || '').trim();
+    if (!fieldName || seenKeys.has(fieldName)) return;
+    if (!Object.prototype.hasOwnProperty.call(submissionData, fieldName)) return;
+    orderedEntries.push({
+      key: fieldName,
+      label: String(field?.label || '').trim() || formatFieldLabel(fieldName),
+      value: submissionData[fieldName]
+    });
+    seenKeys.add(fieldName);
+  });
+
+  Object.entries(submissionData).forEach(([key, value]) => {
+    if (seenKeys.has(key)) return;
+    orderedEntries.push({
+      key,
+      label: formatFieldLabel(key),
+      value
+    });
+  });
+
+  return orderedEntries;
 };
 
-const buildTemplateData = ({ formName, firstName, lastName, confirmationCode, data, includeResults }) =>
+const buildExtraDataLines = ({ data, formSchema, includeResults }) => {
+  if (!includeResults) return '';
+  const baseKeys = new Set(['first_name', 'last_name']);
+  const entries = buildOrderedFieldEntries({ data, formSchema }).filter(({ key }) => !baseKeys.has(key));
+  if (!entries.length) return '';
+  return entries.map(({ label, value }) => `${label}: ${stringifyValue(value)}`).join('\n');
+};
+
+const buildTemplateData = ({ formName, firstName, lastName, confirmationCode, data, formSchema, includeResults }) =>
   JSON.stringify({
     subject: buildSubject(formName, firstName, lastName),
     form_name: formName || '',
     first_name: firstName || '',
     last_name: lastName || '',
     confirmation_code: confirmationCode || '',
-    extra_data_lines: buildExtraDataLines({ data, includeResults })
+    extra_data_lines: buildExtraDataLines({ data, formSchema, includeResults })
   });
 
-const buildPlainTextBody = ({ formName, firstName, lastName, confirmationCode, data, includeResults }) => {
+const buildPlainTextBody = ({ formName, firstName, lastName, confirmationCode, data, formSchema, includeResults }) => {
   const lines = [
     formName ? `Form: ${formName}` : '',
     firstName || lastName ? `Applicant: ${`${firstName} ${lastName}`.trim()}` : '',
     confirmationCode ? `Confirmation code: ${confirmationCode}` : ''
   ].filter(Boolean);
-  const extraDataLines = buildExtraDataLines({ data, includeResults });
+  const extraDataLines = buildExtraDataLines({ data, formSchema, includeResults });
   if (extraDataLines) lines.push('', extraDataLines);
   return lines.join('\n');
 };
@@ -115,7 +155,8 @@ export const handler = async (event) => {
     const formResult = await withTimeout(
       client.query(
         `select id,
-                name
+                name,
+                schema
          from forms.forms
          where code = $1
          limit 1`,
@@ -132,6 +173,9 @@ export const handler = async (event) => {
 
     const formId = formResult.rows[0].id;
     const formName = formResult.rows[0].name || '';
+    const formSchema = formResult.rows[0].schema && typeof formResult.rows[0].schema === 'object'
+      ? formResult.rows[0].schema
+      : null;
     await withTimeout(
       client.query(
         `insert into publish.submissions (id, form_id, data, confirmation_code)
@@ -162,6 +206,7 @@ export const handler = async (event) => {
             lastName,
             confirmationCode,
             data: submissionData,
+            formSchema,
             includeResults
           }),
           templateData: buildTemplateData({
@@ -170,6 +215,7 @@ export const handler = async (event) => {
             lastName,
             confirmationCode,
             data: submissionData,
+            formSchema,
             includeResults
           })
         };
