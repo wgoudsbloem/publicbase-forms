@@ -4,6 +4,8 @@ const FORM_API_URL = 'https://api.publicbase.com/form';
 const FORM_CODE_API_BASE = 'https://api.publicbase.com/form/code';
 const FORM_ALTCHA_CHALLENGE_URL = 'https://api.publicbase.com/form/challenge';
 const ALTCHA_SCRIPT_URL = 'https://cdn.jsdelivr.net/gh/altcha-org/altcha@main/dist/altcha.min.js';
+const CONTENT_MAX_WIDTH_QUERY_PARAM = 'max-width';
+const CONTENT_MAX_WIDTH_PATTERN = /^\d+(?:\.\d+)?(?:px|%|pt|em|rem|vw|vh|vmin|vmax|ch|ex|cm|mm|in|pc)$/i;
 let issuedFormCode = null;
 let altchaScriptPromise = null;
 let altchaContextPromise = Promise.resolve(null);
@@ -16,6 +18,43 @@ const getFormPathFromUrl = () => {
     const path = window.location.pathname || '/';
     const normalized = path.replace(/\/+$/, '').replace(/\/index\.html$/, '');
     return normalized.startsWith('/') ? normalized : `/${normalized}`;
+};
+
+const getRequestedContentMaxWidth = () => {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        const raw = String(params.get(CONTENT_MAX_WIDTH_QUERY_PARAM) || '').trim();
+        if (!raw) return '';
+        return CONTENT_MAX_WIDTH_PATTERN.test(raw) ? raw : '';
+    } catch {
+        return '';
+    }
+};
+
+const applyRequestedContentMaxWidth = () => {
+    const requestedMaxWidth = getRequestedContentMaxWidth();
+    if (!requestedMaxWidth) return;
+    document.documentElement.style.setProperty('--public-content-max-width', requestedMaxWidth);
+};
+
+const propagateRequestedContentMaxWidthToLinks = () => {
+    const requestedMaxWidth = getRequestedContentMaxWidth();
+    if (!requestedMaxWidth) return;
+    document.querySelectorAll('body > main > section table a[href]').forEach((link) => {
+        const rawHref = String(link.getAttribute('href') || '').trim();
+        if (!rawHref || rawHref.startsWith('#')) return;
+        let resolved;
+        try {
+            resolved = new URL(rawHref, window.location.href);
+        } catch {
+            return;
+        }
+        if (resolved.origin !== window.location.origin) return;
+        if (resolved.searchParams.has(CONTENT_MAX_WIDTH_QUERY_PARAM)) return;
+        resolved.searchParams.set(CONTENT_MAX_WIDTH_QUERY_PARAM, requestedMaxWidth);
+        const nextHref = `${resolved.pathname}${resolved.search}${resolved.hash}`;
+        link.setAttribute('href', nextHref);
+    });
 };
 
 const collectFormData = (form) => {
@@ -423,6 +462,8 @@ const submitForm = async () => {
 };
 
 formCodePromise = initFormCode();
+applyRequestedContentMaxWidth();
+propagateRequestedContentMaxWidthToLinks();
 attachCapitalization();
 attachTextareaCounters();
 altchaContextPromise = initAltcha();
