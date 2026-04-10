@@ -57,6 +57,19 @@ const propagateRequestedContentMaxWidthToLinks = () => {
     });
 };
 
+const attachInventoryFilter = () => {
+    const filterInput = document.getElementById("form-number-filter");
+    if (!filterInput) return;
+    const rows = Array.from(document.querySelectorAll("tbody tr"));
+    filterInput.addEventListener("input", () => {
+        const query = filterInput.value.trim().toLowerCase();
+        rows.forEach((row) => {
+            const formNumber = row.querySelector("[data-form-number]")?.getAttribute("data-form-number") || "";
+            row.hidden = query !== "" && !formNumber.includes(query);
+        });
+    });
+};
+
 const collectFormData = (form) => {
     const values = {};
     const fields = form.querySelectorAll('input, select, textarea');
@@ -464,6 +477,7 @@ const submitForm = async () => {
 formCodePromise = initFormCode();
 applyRequestedContentMaxWidth();
 propagateRequestedContentMaxWidthToLinks();
+attachInventoryFilter();
 attachCapitalization();
 attachTextareaCounters();
 altchaContextPromise = initAltcha();
