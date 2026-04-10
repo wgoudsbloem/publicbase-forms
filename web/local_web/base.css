@@ -22,7 +22,7 @@
      --button-neutral-active: #e2e8f0;
      --button-neutral-fg: var(--primary);
      --button-neutral-border: var(--primary);
-     --public-content-max-width: 100%;
+     --public-content-max-width: 1024px;
  }
 
  * {
@@ -56,6 +56,30 @@
 
  header {
      margin-bottom: 8px;
+ }
+
+ html.public-embed body {
+     min-height: 0;
+     padding: 0;
+     background: transparent;
+ }
+
+ html.public-embed main {
+     display: none;
+ }
+
+ html.public-embed .public-embed-root {
+     width: 100%;
+     max-width: none;
+     margin: 0;
+ }
+
+ html.public-embed section.public-embed-root,
+ html.public-embed form.public-embed-root > section {
+     background: transparent;
+     border: 0;
+     border-radius: 0;
+     padding: 0;
  }
 
  h1,

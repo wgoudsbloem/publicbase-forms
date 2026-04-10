@@ -3,8 +3,9 @@ const form = document.querySelector('form');
 const FORM_API_URL = 'https://api.publicbase.com/form';
 const FORM_CODE_API_BASE = 'https://api.publicbase.com/form/code';
 const FORM_ALTCHA_CHALLENGE_URL = 'https://api.publicbase.com/form/challenge';
-const ALTCHA_SCRIPT_URL = 'https://cdn.jsdelivr.net/gh/altcha-org/altcha@main/dist/altcha.min.js';
+const ALTCHA_SCRIPT_URL = '/altcha.min.js';
 const CONTENT_MAX_WIDTH_QUERY_PARAM = 'max-width';
+const EMBED_QUERY_PARAM = 'embed';
 const CONTENT_MAX_WIDTH_PATTERN = /^\d+(?:\.\d+)?(?:px|%|pt|em|rem|vw|vh|vmin|vmax|ch|ex|cm|mm|in|pc)$/i;
 let issuedFormCode = null;
 let altchaScriptPromise = null;
@@ -31,15 +32,41 @@ const getRequestedContentMaxWidth = () => {
     }
 };
 
+const isEmbedRequested = () => {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        return String(params.get(EMBED_QUERY_PARAM) || '').trim().toLowerCase() === 'true';
+    } catch {
+        return false;
+    }
+};
+
 const applyRequestedContentMaxWidth = () => {
     const requestedMaxWidth = getRequestedContentMaxWidth();
     if (!requestedMaxWidth) return;
     document.documentElement.style.setProperty('--public-content-max-width', requestedMaxWidth);
 };
 
+const getEmbedRoot = () => {
+    return document.querySelector('[data-embed-root]')
+        || document.querySelector('body > main > form')
+        || document.querySelector('body > main > section');
+};
+
+const applyEmbedMode = () => {
+    if (!isEmbedRequested()) return;
+    const embedRoot = getEmbedRoot();
+    if (!embedRoot) return;
+    document.documentElement.classList.add('public-embed');
+    document.body.classList.add('public-embed');
+    embedRoot.classList.add('public-embed-root');
+    document.body.replaceChildren(embedRoot);
+};
+
 const propagateRequestedContentMaxWidthToLinks = () => {
     const requestedMaxWidth = getRequestedContentMaxWidth();
-    if (!requestedMaxWidth) return;
+    const embedRequested = isEmbedRequested();
+    if (!requestedMaxWidth && !embedRequested) return;
     document.querySelectorAll('body > main > section table a[href]').forEach((link) => {
         const rawHref = String(link.getAttribute('href') || '').trim();
         if (!rawHref || rawHref.startsWith('#')) return;
@@ -50,8 +77,12 @@ const propagateRequestedContentMaxWidthToLinks = () => {
             return;
         }
         if (resolved.origin !== window.location.origin) return;
-        if (resolved.searchParams.has(CONTENT_MAX_WIDTH_QUERY_PARAM)) return;
-        resolved.searchParams.set(CONTENT_MAX_WIDTH_QUERY_PARAM, requestedMaxWidth);
+        if (requestedMaxWidth && !resolved.searchParams.has(CONTENT_MAX_WIDTH_QUERY_PARAM)) {
+            resolved.searchParams.set(CONTENT_MAX_WIDTH_QUERY_PARAM, requestedMaxWidth);
+        }
+        if (embedRequested && !resolved.searchParams.has(EMBED_QUERY_PARAM)) {
+            resolved.searchParams.set(EMBED_QUERY_PARAM, 'true');
+        }
         const nextHref = `${resolved.pathname}${resolved.search}${resolved.hash}`;
         link.setAttribute('href', nextHref);
     });
@@ -476,6 +507,7 @@ const submitForm = async () => {
 
 formCodePromise = initFormCode();
 applyRequestedContentMaxWidth();
+applyEmbedMode();
 propagateRequestedContentMaxWidthToLinks();
 attachInventoryFilter();
 attachCapitalization();
