@@ -113,6 +113,14 @@ const collectFormData = (form) => {
         const key = normalizeFieldKey(rawKey);
         values[key] = field.type === 'checkbox' ? Boolean(field.checked) : field.value;
     });
+    form.querySelectorAll('canvas[data-signature-name]').forEach((canvas) => {
+        const key = normalizeFieldKey(canvas.dataset.signatureName);
+        if (!key) return;
+        const blank = document.createElement('canvas');
+        blank.width = canvas.width;
+        blank.height = canvas.height;
+        values[key] = canvas.toDataURL() === blank.toDataURL() ? '' : canvas.toDataURL('image/png');
+    });
     const submittedValues = new FormData(form);
     submittedValues.forEach((value, rawKey) => {
         const key = normalizeFieldKey(rawKey);
@@ -165,6 +173,57 @@ const attachTextareaCounters = () => {
 
         field.addEventListener('input', updateCounter);
         updateCounter();
+    });
+};
+
+const initSignaturePads = () => {
+    if (!form) return;
+    form.querySelectorAll('canvas[data-signature-name]').forEach((canvas) => {
+        if (canvas.dataset.sigBound === 'true') return;
+        canvas.dataset.sigBound = 'true';
+        canvas.dataset.signed = 'false';
+
+        const ctx = canvas.getContext('2d');
+        ctx.strokeStyle = '#1f2733';
+        ctx.lineWidth = 1.5;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+
+        const getPos = (e) => {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (e.clientX - rect.left) * (canvas.width / rect.width),
+                y: (e.clientY - rect.top) * (canvas.height / rect.height),
+            };
+        };
+
+        let drawing = false;
+        canvas.addEventListener('pointerdown', (e) => {
+            e.preventDefault();
+            drawing = true;
+            canvas.setPointerCapture(e.pointerId);
+            const { x, y } = getPos(e);
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+        });
+        canvas.addEventListener('pointermove', (e) => {
+            if (!drawing) return;
+            const { x, y } = getPos(e);
+            ctx.lineTo(x, y);
+            ctx.stroke();
+            canvas.dataset.signed = 'true';
+            canvas.classList.remove('signature-pad--error');
+        });
+        canvas.addEventListener('pointerup', () => { drawing = false; });
+        canvas.addEventListener('pointercancel', () => { drawing = false; });
+
+        const clearBtn = canvas.nextElementSibling;
+        if (clearBtn && clearBtn.classList.contains('signature-clear')) {
+            clearBtn.addEventListener('click', () => {
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+                canvas.dataset.signed = 'false';
+            });
+        }
     });
 };
 
@@ -443,6 +502,15 @@ const initAltcha = async () => {
 
 const submitForm = async () => {
     if (!form || isSubmitting) return;
+
+    const unsignedRequired = [...form.querySelectorAll('canvas[data-signature-required="true"]')]
+        .filter((c) => c.dataset.signed !== 'true');
+    if (unsignedRequired.length) {
+        unsignedRequired.forEach((c) => c.classList.add('signature-pad--error'));
+        unsignedRequired[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+    }
+
     if (typeof form.reportValidity === 'function') {
         if (!form.reportValidity()) return;
     } else if (!form.checkValidity()) {
@@ -512,6 +580,7 @@ propagateRequestedContentMaxWidthToLinks();
 attachInventoryFilter();
 attachCapitalization();
 attachTextareaCounters();
+initSignaturePads();
 altchaContextPromise = initAltcha();
 
 if (form) {
