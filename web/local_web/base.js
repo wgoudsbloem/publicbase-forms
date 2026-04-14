@@ -176,6 +176,32 @@ const attachTextareaCounters = () => {
     });
 };
 
+const attachPatternValidation = () => {
+    if (!form) return;
+    form.querySelectorAll('textarea[data-pattern], input[pattern]').forEach((el) => {
+        if (el.dataset.patternBound === 'true') return;
+        el.dataset.patternBound = 'true';
+        const raw = el.dataset.pattern || el.getAttribute('pattern');
+        if (!raw) return;
+        // Remove the pattern attribute so the browser's v-flag validation doesn't conflict
+        if (el.hasAttribute('pattern')) el.removeAttribute('pattern');
+        const re = (() => { try { return new RegExp(`^(?:${raw})$`); } catch { return null; } })();
+        if (!re) return;
+        const check = () => {
+            const val = el.value;
+            if (val && !re.test(val)) {
+                el.setCustomValidity('Please match the requested format.');
+            } else {
+                el.setCustomValidity('');
+            }
+        };
+        el.addEventListener('input', check);
+        el.addEventListener('change', check);
+    });
+};
+
+const attachTextareaPatterns = attachPatternValidation;
+
 const initSignaturePads = () => {
     if (!form) return;
     form.querySelectorAll('canvas[data-signature-name]').forEach((canvas) => {
@@ -580,6 +606,7 @@ propagateRequestedContentMaxWidthToLinks();
 attachInventoryFilter();
 attachCapitalization();
 attachTextareaCounters();
+attachTextareaPatterns();
 initSignaturePads();
 altchaContextPromise = initAltcha();
 
