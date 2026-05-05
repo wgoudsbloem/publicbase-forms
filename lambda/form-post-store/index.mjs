@@ -126,6 +126,26 @@ const buildPlainTextBody = ({ formName, firstName, lastName, confirmationCode, d
   return lines.join('\n');
 };
 
+const getFormLookupCandidates = (normalizedPath) => {
+  const parts = String(normalizedPath || '').trim().split('/').filter(Boolean);
+  if (parts.length < 3) {
+    return {
+      basePath: '',
+      formNumber: '',
+      formVersion: ''
+    };
+  }
+
+  const formVersion = parts.at(-1) || '';
+  const formNumber = parts.at(-2) || '';
+  const basePath = `/${parts.slice(0, -2).join('/')}`;
+  return {
+    basePath,
+    formNumber,
+    formVersion
+  };
+};
+
 const loadRecipients = async (client, formId) => {
   const result = await client.query(
     `select u.email,
@@ -155,22 +175,35 @@ export const handler = async (event) => {
 
   const client = await withTimeout(pool.connect(), connectTimeoutMs, 'DB connect');
   try {
+    const lookup = getFormLookupCandidates(normalizedPath);
     const formResult = await withTimeout(
       client.query(
         `select id,
                 name,
                 schema
          from forms.forms
-         where code = $1
+         where regexp_replace(code, '/+$', '') = $1
+           and regexp_replace(
+                 regexp_replace(lower(trim(number)), '\\s+', '_', 'g'),
+                 '[^a-z0-9_-]',
+                 '',
+                 'g'
+               ) = $2
+           and regexp_replace(
+                 regexp_replace(lower(trim(coalesce(version, 1)::text)), '\\s+', '_', 'g'),
+                 '[^a-z0-9_-]',
+                 '',
+                 'g'
+               ) = $3
          limit 1`,
-        [normalizedPath]
+        [lookup.basePath, lookup.formNumber, lookup.formVersion]
       ),
       queryTimeoutMs,
       'DB form lookup'
     );
 
     if (formResult.rowCount === 0) {
-      logDebug('Form path not found', { requestId, normalizedPath });
+      logDebug('Form path not found', { requestId, normalizedPath, lookup });
       return response(404, { ok: false, error: 'FORM_NOT_FOUND' });
     }
 
