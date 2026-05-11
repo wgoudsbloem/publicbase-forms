@@ -77,6 +77,14 @@ const normalizeFormPath = (value) =>
     .replace(/\/index\.html$/, '')
     .replace(/^\/?/, '/');
 
+const normalizeSubmissionId = (value) => {
+  const candidate = String(value || '').trim();
+  if (/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(candidate)) {
+    return candidate;
+  }
+  return crypto.randomUUID();
+};
+
 const decodeLambdaPayload = (payload) => {
   if (!payload) return null;
   const raw = Buffer.from(payload).toString('utf-8').trim();
@@ -197,7 +205,7 @@ export const handler = async (event) => {
     return out;
   })();
 
-  const submissionId = crypto.randomUUID();
+  const submissionId = normalizeSubmissionId(payload?.submissionId);
   try {
     const codeResult = await withTimeout(
       ddb.send(
@@ -255,6 +263,10 @@ export const handler = async (event) => {
     if (storeResult.statusCode === 404) {
       logDebug('Form path not found', { requestId, formPath: codeItem.form_path });
       return response(404);
+    }
+    if (storeResult.statusCode === 400) {
+      logDebug('Store lambda rejected submission as invalid', { requestId, body: storeResult.body });
+      return response(400, storeResult.body || undefined);
     }
     if (storeResult.statusCode >= 400 || !storeResult.body?.ok || !storeResult.body?.formId) {
       logError('Store lambda rejected submission', { requestId, statusCode: storeResult.statusCode });

@@ -41,6 +41,10 @@ Parameters:
     Type: String
     Default: forms-altcha-hmac-key
     Description: Secrets Manager secret name storing the ALTCHA HMAC key.
+  FormUploadTokenSecretName:
+    Type: String
+    Default: forms-upload-token-key
+    Description: Secrets Manager secret name storing the public upload token HMAC key.
 
 Resources:
 
@@ -113,6 +117,46 @@ Resources:
           DEBUG: "true"
           DB_CONNECT_TIMEOUT_MS: "3000"
           DB_QUERY_TIMEOUT_MS: "3000"
+
+  FormUploadGrant:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: form-upload-grant
+      CodeUri: form-upload-grant/
+      Handler: index.handler
+      Timeout: 10
+      Environment:
+        Variables:
+          FORM_CODES_TABLE: !Ref FormCodesTable
+          FORM_UPLOAD_BUCKET: publicbase-files
+          FORM_UPLOAD_TOKEN_SECRET: !Sub "{{resolve:secretsmanager:${FormUploadTokenSecretName}:SecretString}}"
+          ALTCHA_HMAC_KEY: !Sub "{{resolve:secretsmanager:${AltchaHmacSecretName}:SecretString}}"
+          DEBUG: "true"
+          DDB_REQUEST_TIMEOUT_MS: "2000"
+      Policies:
+        - DynamoDBReadPolicy:
+            TableName: !Ref FormCodesTable
+
+  FormUploadPost:
+    Type: AWS::Serverless::Function
+    Properties:
+      FunctionName: form-upload-post
+      CodeUri: form-upload-post/
+      Handler: index.handler
+      Timeout: 15
+      Environment:
+        Variables:
+          FORM_UPLOAD_BUCKET: publicbase-files
+          FORM_UPLOAD_TOKEN_SECRET: !Sub "{{resolve:secretsmanager:${FormUploadTokenSecretName}:SecretString}}"
+          S3_REQUEST_TIMEOUT_MS: "8000"
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - s3:AbortMultipartUpload
+                - s3:ListMultipartUploadParts
+                - s3:PutObject
+              Resource: arn:aws:s3:::publicbase-files/*
 
   FormChallengeGet:
     Type: AWS::Serverless::Function
@@ -198,6 +242,52 @@ Resources:
       FunctionName: !Ref FormPost
       Principal: apigateway.amazonaws.com
       SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PublicHttpApiId}/*/POST/form"
+
+  PublicHttpApiFormUploadGrantIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref PublicHttpApiId
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FormUploadGrant.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  PublicHttpApiFormUploadGrantRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref PublicHttpApiId
+      RouteKey: "POST /form/upload/grant"
+      Target: !Sub "integrations/${PublicHttpApiFormUploadGrantIntegration}"
+
+  PublicHttpApiFormUploadGrantPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref FormUploadGrant
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PublicHttpApiId}/*/POST/form/upload/grant"
+
+  PublicHttpApiFormUploadPostIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref PublicHttpApiId
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub "arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${FormUploadPost.Arn}/invocations"
+      PayloadFormatVersion: "2.0"
+
+  PublicHttpApiFormUploadPostRoute:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref PublicHttpApiId
+      RouteKey: "POST /form/upload"
+      Target: !Sub "integrations/${PublicHttpApiFormUploadPostIntegration}"
+
+  PublicHttpApiFormUploadPostPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref FormUploadPost
+      Principal: apigateway.amazonaws.com
+      SourceArn: !Sub "arn:aws:execute-api:${AWS::Region}:${AWS::AccountId}:${PublicHttpApiId}/*/POST/form/upload"
 
   PublicHttpApiFormChallengeGetIntegration:
     Type: AWS::ApiGatewayV2::Integration

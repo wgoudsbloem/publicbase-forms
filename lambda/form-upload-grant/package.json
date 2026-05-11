@@ -1,0 +1,11 @@
+{
+  "name": "form-upload-grant",
+  "version": "1.0.0",
+  "type": "module",
+  "dependencies": {
+    "altcha-lib": "^1.0.0",
+    "@aws-sdk/client-dynamodb": "^3.733.0",
+    "@aws-sdk/lib-dynamodb": "^3.733.0",
+    "@smithy/node-http-handler": "^3.3.0"
+  }
+}

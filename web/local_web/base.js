@@ -1,6 +1,8 @@
 const submitBtn = document.getElementById('submit-btn');
 const form = document.querySelector('form');
 const FORM_API_URL = 'https://api.publicbase.com/form';
+const FORM_UPLOAD_GRANT_API_URL = 'https://api.publicbase.com/form/upload/grant';
+const FORM_UPLOAD_API_URL = 'https://api.publicbase.com/form/upload';
 const FORM_CODE_API_BASE = 'https://api.publicbase.com/form/code';
 const FORM_ALTCHA_CHALLENGE_URL = 'https://api.publicbase.com/form/challenge';
 const ALTCHA_SCRIPT_URL = '/altcha.min.js';
@@ -106,6 +108,7 @@ const collectFormData = (form) => {
     const fields = form.querySelectorAll('input, select, textarea');
     fields.forEach((field) => {
         if (field.disabled) return;
+        if (field.type === 'file') return;
         if (field.type === 'radio' && !field.checked) return;
         const label = field.closest('label');
         const labelTitle = label ? label.querySelector('.label-title') : null;
@@ -125,9 +128,148 @@ const collectFormData = (form) => {
     submittedValues.forEach((value, rawKey) => {
         const key = normalizeFieldKey(rawKey);
         if (!key || Object.prototype.hasOwnProperty.call(values, key)) return;
+        if (value instanceof File) return;
         values[key] = typeof value === 'string' ? value : value?.name || '';
     });
     return values;
+};
+
+const getUploadFields = (form) => [...form.querySelectorAll('input[type="file"][data-upload-field="true"]')]
+    .filter((field) => !field.disabled);
+
+const validateUploadFields = (uploadFields) => {
+    for (const field of uploadFields) {
+        const file = field.files?.[0] || null;
+        if (!file) continue;
+        if (file.size <= 0) {
+            field.setCustomValidity('Choose a file that is not empty.');
+            field.reportValidity();
+            return false;
+        }
+        const maxSizeBytes = Number(field.dataset.maxSizeBytes) || ((Number(field.dataset.maxSizeMb) || 25) * 1024 * 1024);
+        if (file.size > maxSizeBytes) {
+            const maxSizeMb = Number(field.dataset.maxSizeMb) || Math.round(maxSizeBytes / 1024 / 1024);
+            field.setCustomValidity(`Choose a file ${maxSizeMb} MB or smaller.`);
+            field.reportValidity();
+            return false;
+        }
+        field.setCustomValidity('');
+    }
+    return true;
+};
+
+const blobToBase64 = (blob) => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+        const value = String(reader.result || '');
+        resolve(value.includes(',') ? value.split(',').pop() : value);
+    };
+    reader.onerror = () => reject(reader.error || new Error('Failed to read upload chunk'));
+    reader.readAsDataURL(blob);
+});
+
+const uploadSubmissionFiles = async ({ formCode, submissionId, altchaPayload }) => {
+    const uploads = {};
+    const uploadFields = getUploadFields(form);
+    if (!validateUploadFields(uploadFields)) {
+        throw new Error('Upload field validation failed');
+    }
+    if (uploadFields.some((field) => field.files?.[0]) && !altchaPayload) {
+        throw new Error('Complete verification before uploading files.');
+    }
+
+    for (const field of uploadFields) {
+        const file = field.files?.[0] || null;
+        if (!file) continue;
+        const fieldName = normalizeFieldKey(field.name || field.id || 'upload');
+        if (!fieldName) continue;
+
+        const grantResponse = await fetch(FORM_UPLOAD_GRANT_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                code: formCode,
+                altcha: altchaPayload,
+                submissionId,
+                fieldName,
+                fileName: file.name,
+                mimeType: file.type || 'application/octet-stream',
+                sizeBytes: file.size
+            })
+        });
+        if (!grantResponse.ok) {
+            throw new Error(`Failed to prepare upload for ${fieldName}`);
+        }
+        const grant = await grantResponse.json();
+        if (!grant?.uploadToken || !grant?.s3Url) {
+            throw new Error(`Missing upload grant for ${fieldName}`);
+        }
+
+        const startResponse = await fetch(FORM_UPLOAD_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'start',
+                uploadToken: grant.uploadToken
+            })
+        });
+        if (!startResponse.ok) {
+            throw new Error(`Failed to start upload for ${fieldName}`);
+        }
+        const started = await startResponse.json();
+        const uploadId = started?.uploadId;
+        if (!uploadId) {
+            throw new Error(`Missing upload id for ${fieldName}`);
+        }
+
+        const chunkSize = Number(grant.chunkSize) || (5 * 1024 * 1024);
+        const parts = [];
+        let partNumber = 1;
+        for (let offset = 0; offset < file.size; offset += chunkSize) {
+            const chunk = file.slice(offset, Math.min(file.size, offset + chunkSize));
+            const chunkBase64 = await blobToBase64(chunk);
+            const chunkResponse = await fetch(FORM_UPLOAD_API_URL, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    action: 'chunk',
+                    uploadToken: grant.uploadToken,
+                    uploadId,
+                    partNumber,
+                    chunkBase64
+                })
+            });
+            if (!chunkResponse.ok) {
+                throw new Error(`Failed to upload ${file.name}`);
+            }
+            const uploadedPart = await chunkResponse.json();
+            parts.push({ partNumber, etag: uploadedPart.etag });
+            partNumber += 1;
+        }
+
+        const completeResponse = await fetch(FORM_UPLOAD_API_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                action: 'complete',
+                uploadToken: grant.uploadToken,
+                uploadId,
+                parts
+            })
+        });
+        if (!completeResponse.ok) {
+            throw new Error(`Failed to upload ${file.name}`);
+        }
+        const completed = await completeResponse.json();
+
+        uploads[fieldName] = {
+            original_name: completed.originalName || file.name,
+            s3_url: completed.s3Url || grant.s3Url,
+            mime_type: completed.mimeType || file.type || 'application/octet-stream',
+            size_bytes: completed.sizeBytes || file.size
+        };
+    }
+    return uploads;
 };
 
 const capitalizeFirstEntry = (value) => {
@@ -336,6 +478,43 @@ const showConfirmationModal = (code, redirectTo) => {
     document.body.appendChild(overlay);
 };
 
+const ensureSubmitOverlay = () => {
+    let overlay = document.getElementById('form-submit-overlay');
+    if (overlay) return overlay;
+    overlay = document.createElement('div');
+    overlay.id = 'form-submit-overlay';
+    overlay.setAttribute('role', 'status');
+    overlay.setAttribute('aria-live', 'polite');
+    overlay.hidden = true;
+
+    const panel = document.createElement('div');
+    panel.className = 'form-submit-overlay-panel';
+
+    const spinner = document.createElement('div');
+    spinner.className = 'form-submit-spinner';
+    spinner.setAttribute('aria-hidden', 'true');
+
+    const message = document.createElement('p');
+    message.textContent = 'Please wait while we submit your form.';
+
+    panel.append(spinner, message);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+    return overlay;
+};
+
+const showSubmitOverlay = () => {
+    const overlay = ensureSubmitOverlay();
+    overlay.hidden = false;
+    document.body.classList.add('is-submitting-form');
+};
+
+const hideSubmitOverlay = () => {
+    const overlay = document.getElementById('form-submit-overlay');
+    if (overlay) overlay.hidden = true;
+    document.body.classList.remove('is-submitting-form');
+};
+
 const loadAltchaScript = async () => {
     if (window.customElements?.get('altcha-widget')) return;
     if (!altchaScriptPromise) {
@@ -406,7 +585,7 @@ const syncAltchaState = (context, state) => {
         setAltchaStatus(context, 'Complete the ALTCHA challenge to continue.', 'warning');
         return;
     }
-    setAltchaStatus(context, 'Complete the verification step before submitting.', 'idle');
+    setAltchaStatus(context, '', 'idle');
 };
 
 const isAltchaVerified = (context) => {
@@ -536,6 +715,9 @@ const submitForm = async () => {
         unsignedRequired[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
     }
+    if (!validateUploadFields(getUploadFields(form))) {
+        return;
+    }
 
     if (typeof form.reportValidity === 'function') {
         if (!form.reportValidity()) return;
@@ -560,16 +742,27 @@ const submitForm = async () => {
         return;
     }
 
-    const payload = {
-        code: formCode,
-        data: collectFormData(form)
-    };
-
     isSubmitting = true;
     if (submitBtn) {
         submitBtn.disabled = true;
     }
+    showSubmitOverlay();
     try {
+        const submissionId = crypto.randomUUID();
+        const baseFormData = collectFormData(form);
+        const uploadMetadata = await uploadSubmissionFiles({
+            formCode,
+            submissionId,
+            altchaPayload: typeof baseFormData.altcha === 'string' ? baseFormData.altcha : ''
+        });
+        const payload = {
+            code: formCode,
+            submissionId,
+            data: {
+                ...baseFormData,
+                ...uploadMetadata
+            }
+        };
         const res = await fetch(FORM_API_URL, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -592,6 +785,7 @@ const submitForm = async () => {
     } catch (err) {
         console.warn('Form submission error', err);
     } finally {
+        hideSubmitOverlay();
         isSubmitting = false;
         if (submitBtn) {
             submitBtn.disabled = false;

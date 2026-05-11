@@ -61,7 +61,77 @@ const stringifyValue = (value) => {
     return value;
   }
   if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'object' && value.original_name && value.s3_url && value.mime_type) {
+    return `${value.original_name} (${value.mime_type})`;
+  }
   return JSON.stringify(value);
+};
+
+const normalizeUploadMaxSizeMb = (value) => {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 1) return 25;
+  return Math.min(100, parsed);
+};
+
+const validateUploadMetadata = ({ submissionData, formSchema }) => {
+  const schemaFields = [
+    ...(Array.isArray(formSchema?.contact) ? formSchema.contact : []),
+    ...(Array.isArray(formSchema?.fields) ? formSchema.fields : [])
+  ];
+  const uploadFields = schemaFields.filter((field) => String(field?.type || '').toLowerCase() === 'upload');
+  for (const field of uploadFields) {
+    const fieldName = String(field?.name || '').trim();
+    if (!fieldName) continue;
+    const value = submissionData[fieldName];
+    if (value === undefined || value === null || value === '') {
+      if (field.required) {
+        return { ok: false, error: 'UPLOAD_REQUIRED', fieldName };
+      }
+      continue;
+    }
+    if (
+      typeof value !== 'object'
+      || typeof value.original_name !== 'string'
+      || typeof value.s3_url !== 'string'
+      || typeof value.mime_type !== 'string'
+    ) {
+      return { ok: false, error: 'INVALID_UPLOAD_METADATA', fieldName };
+    }
+    if (!value.s3_url.startsWith('s3://publicbase-files/')) {
+      return { ok: false, error: 'INVALID_UPLOAD_LOCATION', fieldName };
+    }
+    const maxBytes = normalizeUploadMaxSizeMb(field.maxFileSizeMb) * 1024 * 1024;
+    const sizeBytes = Number(value.size_bytes);
+    if (Number.isFinite(sizeBytes) && sizeBytes > maxBytes) {
+      return { ok: false, error: 'UPLOAD_TOO_LARGE', fieldName };
+    }
+  }
+  return { ok: true };
+};
+
+const buildFieldTypeMap = (formSchema) => {
+  const fieldTypes = {};
+  const schemaFields = [
+    ...(Array.isArray(formSchema?.contact) ? formSchema.contact : []),
+    ...(Array.isArray(formSchema?.fields) ? formSchema.fields : [])
+  ];
+
+  schemaFields.forEach((field) => {
+    const type = String(field?.type || '').trim().toLowerCase();
+    if (type === 'group' && Array.isArray(field?.groupFields)) {
+      field.groupFields.forEach((groupField) => {
+        const fieldName = String(
+          typeof groupField === 'string' ? groupField : groupField?.name
+        ).trim();
+        if (fieldName) fieldTypes[fieldName] = 'group';
+      });
+      return;
+    }
+    const fieldName = String(field?.name || '').trim();
+    if (fieldName && type) fieldTypes[fieldName] = type;
+  });
+
+  return fieldTypes;
 };
 
 const buildOrderedFieldEntries = ({ data, formSchema }) => {
@@ -87,6 +157,7 @@ const buildOrderedFieldEntries = ({ data, formSchema }) => {
 
   Object.entries(submissionData).forEach(([key, value]) => {
     if (seenKeys.has(key)) return;
+    if (key === 'altcha' || key === '_field_types') return;
     orderedEntries.push({
       key,
       label: formatFieldLabel(key),
@@ -99,7 +170,7 @@ const buildOrderedFieldEntries = ({ data, formSchema }) => {
 
 const buildExtraDataLines = ({ data, formSchema, includeResults }) => {
   if (!includeResults) return '';
-  const baseKeys = new Set(['first_name', 'last_name']);
+  const baseKeys = new Set(['first_name', 'last_name', 'altcha', '_field_types']);
   const entries = buildOrderedFieldEntries({ data, formSchema }).filter(({ key }) => !baseKeys.has(key));
   if (!entries.length) return '';
   return entries.map(({ label, value }) => `${label}: ${stringifyValue(value)}`).join('\n');
@@ -212,11 +283,20 @@ export const handler = async (event) => {
     const formSchema = formResult.rows[0].schema && typeof formResult.rows[0].schema === 'object'
       ? formResult.rows[0].schema
       : null;
+    const uploadValidation = validateUploadMetadata({ submissionData, formSchema });
+    if (!uploadValidation.ok) {
+      logDebug('Upload metadata validation failed', { requestId, ...uploadValidation });
+      return response(400, uploadValidation);
+    }
+    const storedSubmissionData = {
+      ...submissionData,
+      _field_types: buildFieldTypeMap(formSchema)
+    };
     await withTimeout(
       client.query(
         `insert into publish.submissions (id, form_id, data, confirmation_code)
          values ($1, $2, $3, $4)`,
-        [submissionId, formId, submissionData, confirmationCode]
+        [submissionId, formId, storedSubmissionData, confirmationCode]
       ),
       queryTimeoutMs,
       'DB submission insert'
@@ -227,8 +307,8 @@ export const handler = async (event) => {
       queryTimeoutMs,
       'DB recipients lookup'
     );
-    const firstName = submissionData.first_name || '';
-    const lastName = submissionData.last_name || '';
+    const firstName = storedSubmissionData.first_name || '';
+    const lastName = storedSubmissionData.last_name || '';
     const emailJobs = recipients
       .filter((recipient) => recipient?.email)
       .map((recipient) => {
@@ -241,7 +321,7 @@ export const handler = async (event) => {
             firstName,
             lastName,
             confirmationCode,
-            data: submissionData,
+            data: storedSubmissionData,
             formSchema,
             includeResults
           }),
@@ -250,7 +330,7 @@ export const handler = async (event) => {
             firstName,
             lastName,
             confirmationCode,
-            data: submissionData,
+            data: storedSubmissionData,
             formSchema,
             includeResults
           })
