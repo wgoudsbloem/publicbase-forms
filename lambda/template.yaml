@@ -17,10 +17,18 @@ Globals:
         DB_SSL: "true"
 
 Parameters:
+  ResourceSuffix:
+    Type: String
+    Default: ""
+    Description: Suffix for named resources. Use empty for prod, "-dev" for dev.
   PublicHttpApiId:
     Type: String
     Default: 83t8t7jr53
     Description: HTTP API ID for the existing public-api in API Gateway v2.
+  AdminLambdaSecurityGroupId:
+    Type: AWS::EC2::SecurityGroup::Id
+    Default: sg-0612f82330f2556e3
+    Description: Lambda security group allowed to access the database.
   VpcId:
     Type: String
     Default: vpc-0e1bcb950b659598f
@@ -39,17 +47,33 @@ Parameters:
     Type: String
     Default: forms-altcha-hmac-key
     Description: Secrets Manager secret name storing the ALTCHA HMAC key.
+  DbSecretName:
+    Type: String
+    Default: admin-db-credentials
+    Description: Secrets Manager secret name storing database credentials.
+  FormCodesTableName:
+    Type: String
+    Default: form_codes
+    Description: DynamoDB table name for temporary form codes.
+  FormUploadBucket:
+    Type: String
+    Default: publicbase-files
+    Description: S3 bucket used for public form file uploads.
   FormUploadTokenSecretName:
     Type: String
     Default: forms-upload-token-key
     Description: Secrets Manager secret name storing the public upload token HMAC key.
+  SubmissionEmailTopicName:
+    Type: String
+    Default: admin-submission-email
+    Description: SNS topic name for submission notification email fan-out.
 
 Resources:
 
   FormCodesTable:
     Type: AWS::DynamoDB::Table
     Properties:
-      TableName: form_codes
+      TableName: !Ref FormCodesTableName
       BillingMode: PAY_PER_REQUEST
       AttributeDefinitions:
         - AttributeName: code
@@ -64,14 +88,14 @@ Resources:
   AdminLambdaSecurityGroup:
     Type: AWS::SSM::Parameter
     Properties:
-      Name: /publicbase/forms/admin-lambda-sg
+      Name: !Sub /publicbase/forms${ResourceSuffix}/admin-lambda-sg
       Type: String
-      Value: sg-0612f82330f2556e3
+      Value: !Ref AdminLambdaSecurityGroupId
 
   FormPost:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: form-post
+      FunctionName: !Sub form-post${ResourceSuffix}
       CodeUri: form-post/
       Handler: index.handler
       Timeout: 10
@@ -82,7 +106,7 @@ Resources:
           DDB_REQUEST_TIMEOUT_MS: "2000"
           SNS_REQUEST_TIMEOUT_MS: "8000"
           LAMBDA_INVOKE_TIMEOUT_MS: "5000"
-          SUBMISSION_EMAIL_TOPIC_ARN: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:admin-submission-email
+          SUBMISSION_EMAIL_TOPIC_ARN: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${SubmissionEmailTopicName}
           FORM_POST_STORE_FUNCTION_NAME: !Ref FormPostStore
           ALTCHA_HMAC_KEY: !Sub "{{resolve:secretsmanager:${AltchaHmacSecretName}:SecretString}}"
       Policies:
@@ -94,24 +118,24 @@ Resources:
             - Effect: Allow
               Action:
                 - sns:Publish
-              Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:admin-submission-email
+              Resource: !Sub arn:aws:sns:${AWS::Region}:${AWS::AccountId}:${SubmissionEmailTopicName}
 
   FormPostStore:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: form-post-store
+      FunctionName: !Sub form-post-store${ResourceSuffix}
       CodeUri: form-post-store/
       Handler: index.handler
       Timeout: 10
       VpcConfig:
         SecurityGroupIds:
-          - sg-0612f82330f2556e3
+          - !Ref AdminLambdaSecurityGroupId
         SubnetIds: !Ref LambdaSubnetIds
       Environment:
         Variables:
           DB_HOST: !Ref DbHost
-          DB_USER: !Sub "{{resolve:secretsmanager:admin-db-credentials:SecretString:username}}"
-          DB_PASSWORD: !Sub "{{resolve:secretsmanager:admin-db-credentials:SecretString:password}}"
+          DB_USER: !Sub "{{resolve:secretsmanager:${DbSecretName}:SecretString:username}}"
+          DB_PASSWORD: !Sub "{{resolve:secretsmanager:${DbSecretName}:SecretString:password}}"
           DEBUG: "true"
           DB_CONNECT_TIMEOUT_MS: "3000"
           DB_QUERY_TIMEOUT_MS: "3000"
@@ -119,14 +143,14 @@ Resources:
   FormUploadGrant:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: form-upload-grant
+      FunctionName: !Sub form-upload-grant${ResourceSuffix}
       CodeUri: form-upload-grant/
       Handler: index.handler
       Timeout: 10
       Environment:
         Variables:
           FORM_CODES_TABLE: !Ref FormCodesTable
-          FORM_UPLOAD_BUCKET: publicbase-files
+          FORM_UPLOAD_BUCKET: !Ref FormUploadBucket
           FORM_UPLOAD_TOKEN_SECRET: !Sub "{{resolve:secretsmanager:${FormUploadTokenSecretName}:SecretString}}"
           ALTCHA_HMAC_KEY: !Sub "{{resolve:secretsmanager:${AltchaHmacSecretName}:SecretString}}"
           DEBUG: "true"
@@ -138,13 +162,13 @@ Resources:
   FormUploadPost:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: form-upload-post
+      FunctionName: !Sub form-upload-post${ResourceSuffix}
       CodeUri: form-upload-post/
       Handler: index.handler
       Timeout: 15
       Environment:
         Variables:
-          FORM_UPLOAD_BUCKET: publicbase-files
+          FORM_UPLOAD_BUCKET: !Ref FormUploadBucket
           FORM_UPLOAD_TOKEN_SECRET: !Sub "{{resolve:secretsmanager:${FormUploadTokenSecretName}:SecretString}}"
           S3_REQUEST_TIMEOUT_MS: "8000"
       Policies:
@@ -154,12 +178,12 @@ Resources:
                 - s3:AbortMultipartUpload
                 - s3:ListMultipartUploadParts
                 - s3:PutObject
-              Resource: arn:aws:s3:::publicbase-files/*
+              Resource: !Sub arn:aws:s3:::${FormUploadBucket}/*
 
   FormChallengeGet:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: form-challenge-get
+      FunctionName: !Sub form-challenge-get${ResourceSuffix}
       CodeUri: form-challenge-get/
       Handler: index.handler
       Timeout: 10
@@ -178,13 +202,13 @@ Resources:
   FormCodeGet:
     Type: AWS::Serverless::Function
     Properties:
-      FunctionName: form-code-get
+      FunctionName: !Sub form-code-get${ResourceSuffix}
       CodeUri: form-code-get/
       Handler: index.handler
       Timeout: 10
       VpcConfig:
         SecurityGroupIds:
-          - sg-0612f82330f2556e3
+          - !Ref AdminLambdaSecurityGroupId
         SubnetIds: !Ref LambdaSubnetIds
       Environment:
         Variables:

@@ -23,3 +23,11 @@ Run local forms UI:
 cd ui
 npm run dev
 ```
+
+The forms dev server rewrites `https://api.publicbase.com` in JavaScript responses to the dev forms API by default.
+
+Override the dev API when needed:
+
+```bash
+FORM_API_ORIGIN=https://6khgp8699k.execute-api.ca-central-1.amazonaws.com npm run dev
+```

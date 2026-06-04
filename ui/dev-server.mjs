@@ -10,6 +10,7 @@ const rootDir = path.join(__dirname, 'public');
 const certDir = path.join(__dirname, '.cert');
 const keyPath = path.join(certDir, 'localhost.key');
 const certPath = path.join(certDir, 'localhost.crt');
+const formApiOrigin = process.env.FORM_API_ORIGIN || 'https://6khgp8699k.execute-api.ca-central-1.amazonaws.com';
 
 const port = Number(process.env.PORT) || 5177;
 const host = process.env.HOST || '0.0.0.0';
@@ -51,6 +52,18 @@ const safePath = (urlPath) => {
 const serveFile = (res, filePath) => {
   const ext = path.extname(filePath).toLowerCase();
   const contentType = mimeTypes[ext] || 'application/octet-stream';
+  if (ext === '.js') {
+    fs.readFile(filePath, 'utf8', (err, contents) => {
+      if (err) {
+        res.writeHead(500);
+        res.end('Error reading file');
+        return;
+      }
+      res.writeHead(200, { 'Content-Type': contentType });
+      res.end(contents.replaceAll('https://api.publicbase.com', formApiOrigin));
+    });
+    return;
+  }
   res.writeHead(200, { 'Content-Type': contentType });
   fs.createReadStream(filePath).pipe(res);
 };
