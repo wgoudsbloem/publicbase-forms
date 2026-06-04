@@ -1,0 +1,17 @@
+.DS_Store
+.env
+.env.*
+!.env.example
+
+.codex/
+.agents/
+.vscode/
+
+node_modules/
+npm-debug.log*
+
+lambda/.aws-sam/
+lambda/.sam/
+lambda/**/.aws-sam/
+
+web/local_web/.cert/

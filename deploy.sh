@@ -1,25 +1,60 @@
 #!/usr/bin/env bash
 
-export AWS_PROFILE=publicbase
-export AWS_REGION=ca-central-1
-export AWS_PAGER=""
-
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAMBDA_DIR="$ROOT_DIR/lambda"
 WEB_DIR="$ROOT_DIR/web/local_web"
-PUBLISH_BUCKET="${PUBLISH_BUCKET:-forms.publicbase.com}"
-FORMS_CLOUDFRONT_DISTRIBUTION_ID="${FORMS_CLOUDFRONT_DISTRIBUTION_ID:-E2SF38GJEOV2S8}"
+PUBLICBASE_ENV="${PUBLICBASE_ENV:-prod}"
+ENV_FILE="$ROOT_DIR/deploy/env/${PUBLICBASE_ENV}.env"
 
-echo "Deploying SAM stack (lambda-forms)..."
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  # shellcheck disable=SC1090
+  source "$ENV_FILE"
+  set +a
+else
+  echo "Environment file not found: $ENV_FILE" >&2
+  exit 1
+fi
+
+export AWS_PROFILE="${AWS_PROFILE:-publicbase}"
+export AWS_REGION="${AWS_REGION:-ca-central-1}"
+export AWS_PAGER=""
+export AWS_CLI_AUTO_PROMPT=off
+
+STACK_NAME="${STACK_NAME:-lambda-forms}"
+PUBLISH_BUCKET="${PUBLISH_BUCKET:?PUBLISH_BUCKET is required}"
+PUBLIC_HTTP_API_ID="${PUBLIC_HTTP_API_ID:?PUBLIC_HTTP_API_ID is required}"
+DB_HOST="${DB_HOST:?DB_HOST is required}"
+DB_SECURITY_GROUP_ID="${DB_SECURITY_GROUP_ID:?DB_SECURITY_GROUP_ID is required}"
+
+for asset in base.css base.js altcha.min.js; do
+  if [[ ! -f "$WEB_DIR/$asset" ]]; then
+    echo "Required asset missing: $WEB_DIR/$asset" >&2
+    exit 1
+  fi
+done
+
+echo "Deploying SAM stack (${STACK_NAME}) for ${PUBLICBASE_ENV}..."
 (
   cd "$LAMBDA_DIR"
   sam build
-  sam deploy --no-confirm-changeset --no-fail-on-empty-changeset
+  sam deploy \
+    --stack-name "$STACK_NAME" \
+    --no-confirm-changeset \
+    --no-fail-on-empty-changeset \
+    --parameter-overrides \
+      "PublicHttpApiId=${PUBLIC_HTTP_API_ID}" \
+      "DbHost=${DB_HOST}" \
+      "DbSecurityGroupId=${DB_SECURITY_GROUP_ID}" \
+    --tags \
+      "Application=PublicBase" \
+      "Component=Forms" \
+      "Environment=${PUBLICBASE_ENV}"
 )
 
-echo "Uploading shared public assets..."
+echo "Uploading shared public assets to s3://${PUBLISH_BUCKET}..."
 aws s3 cp "$WEB_DIR/base.css" "s3://$PUBLISH_BUCKET/base.css" \
   --content-type 'text/css; charset=utf-8' \
   --cache-control 'public, max-age=300'
@@ -30,9 +65,13 @@ aws s3 cp "$WEB_DIR/altcha.min.js" "s3://$PUBLISH_BUCKET/altcha.min.js" \
   --content-type 'application/javascript; charset=utf-8' \
   --cache-control 'public, max-age=300'
 
-echo "Invalidating CloudFront shared assets..."
-aws cloudfront create-invalidation \
-  --distribution-id "$FORMS_CLOUDFRONT_DISTRIBUTION_ID" \
-  --paths '/base.css' '/base.js' '/altcha.min.js'
+if [[ -n "${FORMS_CLOUDFRONT_DISTRIBUTION_ID:-}" ]]; then
+  echo "Invalidating CloudFront shared assets..."
+  aws cloudfront create-invalidation \
+    --distribution-id "$FORMS_CLOUDFRONT_DISTRIBUTION_ID" \
+    --paths '/base.css' '/base.js' '/altcha.min.js'
+else
+  echo "Skipping CloudFront invalidation; FORMS_CLOUDFRONT_DISTRIBUTION_ID is empty."
+fi
 
 echo "Done."
