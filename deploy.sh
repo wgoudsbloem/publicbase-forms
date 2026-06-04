@@ -4,7 +4,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 LAMBDA_DIR="$ROOT_DIR/lambda"
-WEB_DIR="$ROOT_DIR/web/local_web"
+UI_PUBLIC_DIR="$ROOT_DIR/ui/public"
 PUBLICBASE_ENV="${PUBLICBASE_ENV:-prod}"
 ENV_FILE="$ROOT_DIR/deploy/env/${PUBLICBASE_ENV}.env"
 
@@ -30,8 +30,8 @@ DB_HOST="${DB_HOST:?DB_HOST is required}"
 DB_SECURITY_GROUP_ID="${DB_SECURITY_GROUP_ID:?DB_SECURITY_GROUP_ID is required}"
 
 for asset in base.css base.js altcha.min.js; do
-  if [[ ! -f "$WEB_DIR/$asset" ]]; then
-    echo "Required asset missing: $WEB_DIR/$asset" >&2
+  if [[ ! -f "$UI_PUBLIC_DIR/$asset" ]]; then
+    echo "Required asset missing: $UI_PUBLIC_DIR/$asset" >&2
     exit 1
   fi
 done
@@ -55,13 +55,13 @@ echo "Deploying SAM stack (${STACK_NAME}) for ${PUBLICBASE_ENV}..."
 )
 
 echo "Uploading shared public assets to s3://${PUBLISH_BUCKET}..."
-aws s3 cp "$WEB_DIR/base.css" "s3://$PUBLISH_BUCKET/base.css" \
+aws s3 cp "$UI_PUBLIC_DIR/base.css" "s3://$PUBLISH_BUCKET/base.css" \
   --content-type 'text/css; charset=utf-8' \
   --cache-control 'public, max-age=300'
-aws s3 cp "$WEB_DIR/base.js" "s3://$PUBLISH_BUCKET/base.js" \
+aws s3 cp "$UI_PUBLIC_DIR/base.js" "s3://$PUBLISH_BUCKET/base.js" \
   --content-type 'application/javascript; charset=utf-8' \
   --cache-control 'public, max-age=300'
-aws s3 cp "$WEB_DIR/altcha.min.js" "s3://$PUBLISH_BUCKET/altcha.min.js" \
+aws s3 cp "$UI_PUBLIC_DIR/altcha.min.js" "s3://$PUBLISH_BUCKET/altcha.min.js" \
   --content-type 'application/javascript; charset=utf-8' \
   --cache-control 'public, max-age=300'
 

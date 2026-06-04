@@ -5,9 +5,9 @@ This repository owns the public form API lambdas and the shared browser assets l
 Production pieces:
 
 - `lambda/` deploys the forms SAM stack, currently `lambda-forms`.
-- `web/local_web/base.css` is served as `https://forms.publicbase.com/base.css`.
-- `web/local_web/base.js` is served as `https://forms.publicbase.com/base.js`.
-- `web/local_web/altcha.min.js` is served as `https://forms.publicbase.com/altcha.min.js`.
+- `ui/public/base.css` is served as `https://forms.publicbase.com/base.css`.
+- `ui/public/base.js` is served as `https://forms.publicbase.com/base.js`.
+- `ui/public/altcha.min.js` is served as `https://forms.publicbase.com/altcha.min.js`.
 
 Deploy production:
 

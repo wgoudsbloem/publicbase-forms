@@ -14,4 +14,4 @@ lambda/.aws-sam/
 lambda/.sam/
 lambda/**/.aws-sam/
 
-web/local_web/.cert/
+ui/public/.cert/
