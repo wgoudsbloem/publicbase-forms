@@ -16,3 +16,10 @@ PUBLICBASE_ENV=prod ./deploy.sh
 ```
 
 The deploy script loads `deploy/env/prod.env`, deploys the SAM stack with Forms tags, uploads the three shared assets, and invalidates those CloudFront paths.
+
+Run local forms UI:
+
+```bash
+cd ui
+npm run dev
+```

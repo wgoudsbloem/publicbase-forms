@@ -6,7 +6,7 @@ import { execSync } from 'child_process';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const rootDir = __dirname;
+const rootDir = path.join(__dirname, 'public');
 const certDir = path.join(__dirname, '.cert');
 const keyPath = path.join(certDir, 'localhost.key');
 const certPath = path.join(certDir, 'localhost.crt');
