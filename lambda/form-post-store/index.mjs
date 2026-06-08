@@ -251,6 +251,7 @@ export const handler = async (event) => {
       client.query(
         `select id,
                 name,
+                user_id,
                 schema
          from forms.forms
          where regexp_replace(code, '/+$', '') = $1
@@ -280,6 +281,7 @@ export const handler = async (event) => {
 
     const formId = formResult.rows[0].id;
     const formName = formResult.rows[0].name || '';
+    const formUserId = formResult.rows[0].user_id || null;
     const formSchema = formResult.rows[0].schema && typeof formResult.rows[0].schema === 'object'
       ? formResult.rows[0].schema
       : null;
@@ -301,6 +303,32 @@ export const handler = async (event) => {
       queryTimeoutMs,
       'DB submission insert'
     );
+    if (formUserId) {
+      try {
+        await withTimeout(
+          client.query(
+            `insert into publish.submission_notes (id, submission_id, user_id, subject, body)
+             values ($1, $2, $3, $4, $5)`,
+            [
+              crypto.randomUUID(),
+              submissionId,
+              formUserId,
+              'Submission',
+              'Form submitted for review.'
+            ]
+          ),
+          queryTimeoutMs,
+          'DB submission note insert'
+        );
+      } catch (err) {
+        logError('Submission stored but initial review note failed', {
+          requestId,
+          submissionId,
+          formId,
+          error: err?.message
+        });
+      }
+    }
 
     const recipients = await withTimeout(
       loadRecipients(client, formId),
