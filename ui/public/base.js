@@ -723,7 +723,6 @@ const loadAltchaScript = async () => {
             const script = document.createElement('script');
             script.type = 'module';
             script.async = true;
-            script.defer = true;
             script.src = ALTCHA_SCRIPT_URL;
             script.dataset.altchaScript = 'true';
             script.addEventListener('load', resolve, { once: true });
