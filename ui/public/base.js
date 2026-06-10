@@ -755,6 +755,21 @@ const requestAltchaVerification = (context) => {
     }
 };
 
+const applyAltchaExternalLinkWarning = (widget) => {
+    const root = widget?.shadowRoot || widget;
+    const link = root?.querySelector?.('a[href="https://altcha.org/"]');
+    if (!link || link.dataset.publicbaseExternalWarning === 'true') return;
+
+    link.dataset.publicbaseExternalWarning = 'true';
+    link.setAttribute('title', 'Opens in a new window');
+    link.setAttribute('aria-label', 'Visit Altcha.org. Opens in a new window.');
+    link.addEventListener('click', (event) => {
+        if (window.confirm('This link opens in a new window. Continue?')) return;
+        event.preventDefault();
+        event.stopPropagation();
+    });
+};
+
 const initAltcha = async () => {
     if (!form) return null;
     const configuredMode = String(form.dataset.altchaMode || '').trim().toLowerCase();
@@ -825,13 +840,16 @@ const initAltcha = async () => {
     }
 
     widget.addEventListener('load', () => {
+        applyAltchaExternalLinkWarning(widget);
         if (!isAltchaVerified(context)) {
             syncAltchaState(context, widget.getState?.() || 'unverified');
         }
     });
+    requestAnimationFrame(() => applyAltchaExternalLinkWarning(widget));
 
     widget.addEventListener('statechange', (event) => {
         const state = String(event.detail?.state || 'unverified');
+        applyAltchaExternalLinkWarning(widget);
         syncAltchaState(context, state);
         if (state === 'verified' && context.pendingSubmit) {
             context.pendingSubmit = false;

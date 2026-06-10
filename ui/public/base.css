@@ -628,7 +628,7 @@
      --altcha-color-border: var(--border);
      --altcha-color-border-focus: var(--primary);
      --altcha-color-text: var(--text);
-     --altcha-color-footer-bg: var(--gray-50);
+     --altcha-color-footer-bg: var(--white);
  }
 
  @media (max-width: 640px) {
