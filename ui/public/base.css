@@ -603,7 +603,7 @@
 
  .altcha-hint,
  .altcha-status {
-     color: var(--muted);
+     color: var(--text);
  }
 
  .altcha-status[data-tone="success"] {
