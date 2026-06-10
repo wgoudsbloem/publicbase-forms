@@ -412,20 +412,31 @@ const attachGroupFieldInputs = () => {
     });
 };
 
-const focusableSelector = 'a[href], button, input, select, textarea, [tabindex]';
+const focusableSelector = 'a[href], button, input:not([type="hidden"]), select, textarea, [tabindex]';
 
 const isHiddenFromAssistiveTech = (element) => {
     return Boolean(element.closest('[hidden], [aria-hidden="true"]'));
 };
 
+const getFocusableElements = (root = document) => {
+    const elements = [];
+    if (root instanceof Element && root.matches(focusableSelector)) {
+        elements.push(root);
+    }
+    root.querySelectorAll(focusableSelector).forEach((element) => elements.push(element));
+    return elements;
+};
+
 const syncHiddenFocusableControls = (root = document) => {
-    root.querySelectorAll(focusableSelector).forEach((element) => {
+    getFocusableElements(root).forEach((element) => {
         const hidden = isHiddenFromAssistiveTech(element);
         if (hidden) {
             if (!element.hasAttribute('data-pb-hidden-original-tabindex')) {
                 element.setAttribute('data-pb-hidden-original-tabindex', element.getAttribute('tabindex') ?? '');
             }
-            element.setAttribute('tabindex', '-1');
+            if (element.getAttribute('tabindex') !== '-1') {
+                element.setAttribute('tabindex', '-1');
+            }
             if ('disabled' in element && !element.disabled) {
                 element.setAttribute('data-pb-hidden-disabled', 'true');
                 element.disabled = true;
@@ -473,7 +484,7 @@ const initHiddenFocusableGuard = () => {
         subtree: true,
         childList: true,
         attributes: true,
-        attributeFilter: ['hidden', 'aria-hidden', 'tabindex', 'disabled']
+        attributeFilter: ['hidden', 'aria-hidden']
     });
 };
 
