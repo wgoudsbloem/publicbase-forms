@@ -58,6 +58,22 @@
      margin-bottom: 8px;
  }
 
+ .form-header {
+     position: relative;
+     padding-right: 8rem;
+ }
+
+ .form-header-aside {
+     position: absolute;
+     top: 0;
+     right: 0;
+     width: 85px;
+     display: flex;
+     flex-direction: column;
+     align-items: flex-end;
+     gap: 8px;
+ }
+
  .inventory-header {
      display: flex;
      align-items: flex-start;
@@ -310,6 +326,27 @@
      outline: none;
      border-color: var(--accent);
      box-shadow: var(--shadow-focus);
+ }
+
+ .group-field {
+     display: block;
+ }
+
+ .group-field-row {
+     display: flex;
+     flex-wrap: wrap;
+     gap: 8px;
+ }
+
+ .group-char-input {
+     width: 44px;
+     min-width: 44px;
+     padding-left: 0;
+     padding-right: 0;
+     text-align: center;
+     font-size: 18px;
+     font-weight: 600;
+     text-transform: uppercase;
  }
 
  textarea {

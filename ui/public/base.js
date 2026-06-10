@@ -344,6 +344,139 @@ const attachPatternValidation = () => {
 
 const attachTextareaPatterns = attachPatternValidation;
 
+const attachGroupFieldInputs = () => {
+    document.querySelectorAll('[data-group-field]').forEach((fieldRoot) => {
+        if (fieldRoot.dataset.groupFieldBound === 'true') return;
+        fieldRoot.dataset.groupFieldBound = 'true';
+
+        const boxes = Array.from(fieldRoot.querySelectorAll('.group-char-input'));
+        if (!boxes.length) return;
+
+        const sync = () => {
+            const filledCount = boxes.filter((input) => String(input.value || '') !== '').length;
+            const isRequired = fieldRoot.hasAttribute('data-group-required');
+            let message = '';
+            if (isRequired && filledCount < boxes.length) {
+                message = 'Complete all boxes.';
+            } else if (!isRequired && filledCount > 0 && filledCount < boxes.length) {
+                message = 'Complete all boxes or leave the field empty.';
+            }
+            boxes.forEach((input) => input.setCustomValidity(message));
+        };
+
+        const focusBox = (index) => {
+            const target = boxes[index];
+            if (!target) return;
+            target.focus();
+            target.select();
+        };
+
+        boxes.forEach((input, index) => {
+            input.addEventListener('input', () => {
+                const value = String(input.value || '');
+                input.value = value ? value.slice(-1) : '';
+                sync();
+                if (input.value && index < boxes.length - 1) {
+                    focusBox(index + 1);
+                }
+            });
+
+            input.addEventListener('keydown', (event) => {
+                if (event.key === 'Backspace' && !input.value && index > 0) {
+                    focusBox(index - 1);
+                }
+                if (event.key === 'ArrowLeft' && index > 0) {
+                    event.preventDefault();
+                    focusBox(index - 1);
+                }
+                if (event.key === 'ArrowRight' && index < boxes.length - 1) {
+                    event.preventDefault();
+                    focusBox(index + 1);
+                }
+            });
+
+            input.addEventListener('paste', (event) => {
+                const pasted = String(event.clipboardData?.getData('text') || '').replace(/\s+/g, '');
+                if (!pasted) return;
+                event.preventDefault();
+                pasted.slice(0, boxes.length - index).split('').forEach((char, offset) => {
+                    const target = boxes[index + offset];
+                    if (target) target.value = char;
+                });
+                sync();
+                focusBox(Math.min(index + pasted.length, boxes.length - 1));
+            });
+        });
+
+        sync();
+    });
+};
+
+const focusableSelector = 'a[href], button, input, select, textarea, [tabindex]';
+
+const isHiddenFromAssistiveTech = (element) => {
+    return Boolean(element.closest('[hidden], [aria-hidden="true"]'));
+};
+
+const syncHiddenFocusableControls = (root = document) => {
+    root.querySelectorAll(focusableSelector).forEach((element) => {
+        const hidden = isHiddenFromAssistiveTech(element);
+        if (hidden) {
+            if (!element.hasAttribute('data-pb-hidden-original-tabindex')) {
+                element.setAttribute('data-pb-hidden-original-tabindex', element.getAttribute('tabindex') ?? '');
+            }
+            element.setAttribute('tabindex', '-1');
+            if ('disabled' in element && !element.disabled) {
+                element.setAttribute('data-pb-hidden-disabled', 'true');
+                element.disabled = true;
+            }
+            return;
+        }
+
+        if (element.hasAttribute('data-pb-hidden-original-tabindex')) {
+            const original = element.getAttribute('data-pb-hidden-original-tabindex') || '';
+            if (original) {
+                element.setAttribute('tabindex', original);
+            } else {
+                element.removeAttribute('tabindex');
+            }
+            element.removeAttribute('data-pb-hidden-original-tabindex');
+        }
+        if (element.getAttribute('data-pb-hidden-disabled') === 'true') {
+            element.disabled = false;
+            element.removeAttribute('data-pb-hidden-disabled');
+        }
+    });
+};
+
+const initHiddenFocusableGuard = () => {
+    syncHiddenFocusableControls();
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'childList') {
+                mutation.addedNodes.forEach((node) => {
+                    if (node instanceof Element) {
+                        syncHiddenFocusableControls(node);
+                    }
+                });
+                syncHiddenFocusableControls();
+                return;
+            }
+            const target = mutation.target;
+            if (target instanceof Element) {
+                syncHiddenFocusableControls(target);
+                syncHiddenFocusableControls();
+            }
+        });
+    });
+    observer.observe(document.documentElement, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        attributeFilter: ['hidden', 'aria-hidden', 'tabindex', 'disabled']
+    });
+};
+
 const initSignaturePads = () => {
     if (!form) return;
     form.querySelectorAll('canvas[data-signature-name]').forEach((canvas) => {
@@ -801,6 +934,8 @@ attachInventoryFilter();
 attachCapitalization();
 attachTextareaCounters();
 attachTextareaPatterns();
+attachGroupFieldInputs();
+initHiddenFocusableGuard();
 initSignaturePads();
 altchaContextPromise = initAltcha();
 
