@@ -14,8 +14,52 @@ let altchaScriptPromise = null;
 let altchaContextPromise = Promise.resolve(null);
 let formCodePromise = Promise.resolve(null);
 let isSubmitting = false;
+const NEW_WINDOW_WARNING = 'Opens in a new window';
 
 const normalizeFieldKey = (value) => String(value || '').trim().toLowerCase().replace(/\s+/g, '_');
+
+const getNewWindowLinkFromEvent = (event) => {
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    for (const item of path) {
+        if (item?.matches?.('a[target="_blank"]')) return item;
+    }
+    return event.target?.closest?.('a[target="_blank"]') || null;
+};
+
+const applyNewWindowLinkWarning = (link) => {
+    if (!link?.matches?.('a[target="_blank"]')) return;
+    if (!String(link.getAttribute('title') || '').includes(NEW_WINDOW_WARNING)) {
+        link.setAttribute('title', NEW_WINDOW_WARNING);
+    }
+
+    const currentLabel = String(link.getAttribute('aria-label') || '').trim();
+    if (currentLabel && !currentLabel.includes(NEW_WINDOW_WARNING)) {
+        link.setAttribute('aria-label', `${currentLabel}. ${NEW_WINDOW_WARNING}.`);
+    }
+};
+
+const applyNewWindowLinkWarnings = (root = document) => {
+    root.querySelectorAll?.('a[target="_blank"]').forEach(applyNewWindowLinkWarning);
+};
+
+const initNewWindowLinkWarnings = () => {
+    applyNewWindowLinkWarnings();
+    document.addEventListener(
+        'click',
+        (event) => {
+            const link = getNewWindowLinkFromEvent(event);
+            if (!link) return;
+            applyNewWindowLinkWarning(link);
+            if (window.confirm('This link opens in a new window. Continue?')) return;
+            event.preventDefault();
+            event.stopPropagation();
+        },
+        true
+    );
+
+    const observer = new MutationObserver(() => applyNewWindowLinkWarnings());
+    observer.observe(document.documentElement, { childList: true, subtree: true });
+};
 
 const getFormPathFromUrl = () => {
     const path = window.location.pathname || '/';
@@ -755,21 +799,6 @@ const requestAltchaVerification = (context) => {
     }
 };
 
-const applyAltchaExternalLinkWarning = (widget) => {
-    const root = widget?.shadowRoot || widget;
-    const link = root?.querySelector?.('a[href="https://altcha.org/"]');
-    if (!link || link.dataset.publicbaseExternalWarning === 'true') return;
-
-    link.dataset.publicbaseExternalWarning = 'true';
-    link.setAttribute('title', 'Opens in a new window');
-    link.setAttribute('aria-label', 'Visit Altcha.org. Opens in a new window.');
-    link.addEventListener('click', (event) => {
-        if (window.confirm('This link opens in a new window. Continue?')) return;
-        event.preventDefault();
-        event.stopPropagation();
-    });
-};
-
 const initAltcha = async () => {
     if (!form) return null;
     const configuredMode = String(form.dataset.altchaMode || '').trim().toLowerCase();
@@ -840,16 +869,16 @@ const initAltcha = async () => {
     }
 
     widget.addEventListener('load', () => {
-        applyAltchaExternalLinkWarning(widget);
+        applyNewWindowLinkWarnings(widget.shadowRoot || widget);
         if (!isAltchaVerified(context)) {
             syncAltchaState(context, widget.getState?.() || 'unverified');
         }
     });
-    requestAnimationFrame(() => applyAltchaExternalLinkWarning(widget));
+    requestAnimationFrame(() => applyNewWindowLinkWarnings(widget.shadowRoot || widget));
 
     widget.addEventListener('statechange', (event) => {
         const state = String(event.detail?.state || 'unverified');
-        applyAltchaExternalLinkWarning(widget);
+        applyNewWindowLinkWarnings(widget.shadowRoot || widget);
         syncAltchaState(context, state);
         if (state === 'verified' && context.pendingSubmit) {
             context.pendingSubmit = false;
@@ -959,6 +988,7 @@ formCodePromise = initFormCode();
 applyRequestedContentMaxWidth();
 applyEmbedMode();
 propagateRequestedContentMaxWidthToLinks();
+initNewWindowLinkWarnings();
 attachInventoryFilter();
 attachCapitalization();
 attachTextareaCounters();
