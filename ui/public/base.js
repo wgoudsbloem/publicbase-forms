@@ -1,5 +1,5 @@
-const submitBtn = document.getElementById('submit-btn');
 const form = document.querySelector('form');
+const submitBtn = form?.querySelector('button[type="submit"], input[type="submit"]') || null;
 const FORM_API_URL = 'https://api.publicbase.com/form';
 const FORM_UPLOAD_GRANT_API_URL = 'https://api.publicbase.com/form/upload/grant';
 const FORM_UPLOAD_API_URL = 'https://api.publicbase.com/form/upload';
@@ -96,6 +96,7 @@ const applyRequestedContentMaxWidth = () => {
 const getEmbedRoot = () => {
     return document.querySelector('[data-embed-root]')
         || document.querySelector('body > main > form')
+        || document.querySelector('body > main > div')
         || document.querySelector('body > main > section');
 };
 
@@ -103,9 +104,8 @@ const applyEmbedMode = () => {
     if (!isEmbedRequested()) return;
     const embedRoot = getEmbedRoot();
     if (!embedRoot) return;
-    document.documentElement.classList.add('public-embed');
-    document.body.classList.add('public-embed');
-    embedRoot.classList.add('public-embed-root');
+    document.documentElement.dataset.publicEmbed = 'true';
+    document.body.dataset.publicEmbed = 'true';
     document.body.replaceChildren(embedRoot);
 };
 
@@ -113,7 +113,7 @@ const propagateRequestedContentMaxWidthToLinks = () => {
     const requestedMaxWidth = getRequestedContentMaxWidth();
     const embedRequested = isEmbedRequested();
     if (!requestedMaxWidth && !embedRequested) return;
-    document.querySelectorAll('body > main > section table a[href]').forEach((link) => {
+    document.querySelectorAll('[data-embed-root="inventory"] table a[href]').forEach((link) => {
         const rawHref = String(link.getAttribute('href') || '').trim();
         if (!rawHref || rawHref.startsWith('#')) return;
         let resolved;
@@ -135,9 +135,9 @@ const propagateRequestedContentMaxWidthToLinks = () => {
 };
 
 const attachInventoryFilter = () => {
-    const filterInput = document.getElementById("form-number-filter");
+    const filterInput = document.querySelector('[data-embed-root="inventory"] search input[type="search"]');
     if (!filterInput) return;
-    const rows = Array.from(document.querySelectorAll("tbody tr"));
+    const rows = Array.from(document.querySelectorAll('[data-embed-root="inventory"] tbody tr'));
     filterInput.addEventListener("input", () => {
         const query = filterInput.value.trim().toLowerCase();
         rows.forEach((row) => {
@@ -154,9 +154,7 @@ const collectFormData = (form) => {
         if (field.disabled) return;
         if (field.type === 'file') return;
         if (field.type === 'radio' && !field.checked) return;
-        const label = field.closest('label');
-        const labelTitle = label ? label.querySelector('.label-title') : null;
-        const rawKey = field.name || (labelTitle ? labelTitle.textContent : '') || field.id || 'field';
+        const rawKey = field.name || field.id || 'field';
         const key = normalizeFieldKey(rawKey);
         values[key] = field.type === 'checkbox' ? Boolean(field.checked) : field.value;
     });
@@ -393,7 +391,7 @@ const attachGroupFieldInputs = () => {
         if (fieldRoot.dataset.groupFieldBound === 'true') return;
         fieldRoot.dataset.groupFieldBound = 'true';
 
-        const boxes = Array.from(fieldRoot.querySelectorAll('.group-char-input'));
+        const boxes = Array.from(fieldRoot.querySelectorAll('input'));
         if (!boxes.length) return;
 
         const sync = () => {
@@ -568,13 +566,13 @@ const initSignaturePads = () => {
             ctx.lineTo(x, y);
             ctx.stroke();
             canvas.dataset.signed = 'true';
-            canvas.classList.remove('signature-pad--error');
+            delete canvas.dataset.signatureError;
         });
         canvas.addEventListener('pointerup', () => { drawing = false; });
         canvas.addEventListener('pointercancel', () => { drawing = false; });
 
         const clearBtn = canvas.nextElementSibling;
-        if (clearBtn && clearBtn.classList.contains('signature-clear')) {
+        if (clearBtn?.matches?.('button')) {
             clearBtn.addEventListener('click', () => {
                 ctx.clearRect(0, 0, canvas.width, canvas.height);
                 canvas.dataset.signed = 'false';
@@ -609,14 +607,12 @@ const initFormCode = async () => {
 };
 
 const showConfirmationModal = (code, redirectTo) => {
-    const existing = document.getElementById('confirmation-overlay');
+    const existing = document.querySelector('publicbase-confirmation');
     if (existing) existing.remove();
 
-    const overlay = document.createElement('div');
-    overlay.id = 'confirmation-overlay';
+    const overlay = document.createElement('publicbase-confirmation');
 
-    const modal = document.createElement('div');
-    modal.id = 'confirmation-modal';
+    const modal = document.createElement('publicbase-confirmation-dialog');
 
     const title = document.createElement('h2');
     title.textContent = 'Submission received';
@@ -624,15 +620,13 @@ const showConfirmationModal = (code, redirectTo) => {
     const message = document.createElement('p');
     message.textContent = 'Your confirmation code is:';
 
-    const codeRow = document.createElement('div');
-    codeRow.id = 'confirmation-code';
+    const codeRow = document.createElement('publicbase-confirmation-code');
 
     const codeText = document.createElement('span');
     codeText.textContent = code;
 
     const copyBtn = document.createElement('button');
     copyBtn.type = 'button';
-    copyBtn.id = 'copy-confirmation';
     copyBtn.textContent = 'Copy';
     copyBtn.addEventListener('click', async () => {
         try {
@@ -648,8 +642,7 @@ const showConfirmationModal = (code, redirectTo) => {
 
     codeRow.append(codeText, copyBtn);
 
-    const actions = document.createElement('div');
-    actions.id = 'confirmation-actions';
+    const actions = document.createElement('publicbase-confirmation-actions');
 
     const closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -667,19 +660,16 @@ const showConfirmationModal = (code, redirectTo) => {
 };
 
 const ensureSubmitOverlay = () => {
-    let overlay = document.getElementById('form-submit-overlay');
+    let overlay = document.querySelector('publicbase-submit-overlay');
     if (overlay) return overlay;
-    overlay = document.createElement('div');
-    overlay.id = 'form-submit-overlay';
+    overlay = document.createElement('publicbase-submit-overlay');
     overlay.setAttribute('role', 'status');
     overlay.setAttribute('aria-live', 'polite');
     overlay.hidden = true;
 
-    const panel = document.createElement('div');
-    panel.className = 'form-submit-overlay-panel';
+    const panel = document.createElement('publicbase-submit-panel');
 
-    const spinner = document.createElement('div');
-    spinner.className = 'form-submit-spinner';
+    const spinner = document.createElement('publicbase-submit-spinner');
     spinner.setAttribute('aria-hidden', 'true');
 
     const message = document.createElement('p');
@@ -694,13 +684,11 @@ const ensureSubmitOverlay = () => {
 const showSubmitOverlay = () => {
     const overlay = ensureSubmitOverlay();
     overlay.hidden = false;
-    document.body.classList.add('is-submitting-form');
 };
 
 const hideSubmitOverlay = () => {
-    const overlay = document.getElementById('form-submit-overlay');
+    const overlay = document.querySelector('publicbase-submit-overlay');
     if (overlay) overlay.hidden = true;
-    document.body.classList.remove('is-submitting-form');
 };
 
 const loadAltchaScript = async () => {
@@ -806,16 +794,13 @@ const initAltcha = async () => {
         : (configuredMode || 'server');
     if (!mode) return null;
 
-    const shell = document.createElement('div');
-    shell.className = 'altcha-shell';
+    const shell = document.createElement('publicbase-altcha');
     shell.dataset.altchaState = 'loading';
 
     const title = document.createElement('p');
-    title.className = 'altcha-title';
     title.textContent = 'Human verification';
 
     const hint = document.createElement('p');
-    hint.className = 'altcha-hint';
     hint.textContent = mode === 'test'
         ? 'This form uses ALTCHA test mode, so verification works without a live challenge endpoint.'
         : 'Complete the ALTCHA verification before submitting this form.';
@@ -827,12 +812,11 @@ const initAltcha = async () => {
     }
 
     const status = document.createElement('small');
-    status.className = 'altcha-status';
     status.setAttribute('aria-live', 'polite');
 
     shell.append(title, hint, widget, status);
 
-    const submitControl = form.querySelector('#submit-btn, button[type="submit"], input[type="submit"]');
+    const submitControl = form.querySelector('button[type="submit"], input[type="submit"]');
     form.insertBefore(shell, submitControl || null);
 
     const context = {
@@ -901,7 +885,7 @@ const submitForm = async () => {
     const unsignedRequired = [...form.querySelectorAll('canvas[data-signature-required="true"]')]
         .filter((c) => c.dataset.signed !== 'true');
     if (unsignedRequired.length) {
-        unsignedRequired.forEach((c) => c.classList.add('signature-pad--error'));
+        unsignedRequired.forEach((c) => { c.dataset.signatureError = 'true'; });
         unsignedRequired[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
     }

@@ -58,12 +58,12 @@
      margin-bottom: 8px;
  }
 
- .form-header {
+ header:has(> aside) {
      position: relative;
      padding-right: 8rem;
  }
 
- .form-header-aside {
+ header > aside {
      position: absolute;
      top: 0;
      right: 0;
@@ -74,14 +74,15 @@
      gap: 8px;
  }
 
- .inventory-header {
+ header:has(> hgroup) {
      display: flex;
      align-items: flex-start;
      justify-content: space-between;
      gap: 16px;
  }
 
- .organization-logo {
+ header > img,
+ header > aside img {
      width: 85px;
      height: 85px;
      object-fit: contain;
@@ -89,24 +90,24 @@
      display: block;
  }
 
- html.public-embed body {
+ html[data-public-embed="true"] body {
      min-height: 0;
      padding: 0;
      background: transparent;
  }
 
- html.public-embed main {
+ html[data-public-embed="true"] main {
      display: none;
  }
 
- html.public-embed .public-embed-root {
+ html[data-public-embed="true"] [data-embed-root] {
      width: 100%;
      max-width: none;
      margin: 0;
  }
 
- html.public-embed section.public-embed-root,
- html.public-embed form.public-embed-root > section {
+ html[data-public-embed="true"] [data-embed-root],
+ html[data-public-embed="true"] form[data-embed-root] > div:first-of-type {
      background: transparent;
      border: 0;
      border-radius: 0;
@@ -130,44 +131,48 @@
      gap: 18px;
  }
 
- section {
+ section,
+ main > div,
+ form > div:first-of-type {
      background: var(--gray-50);
      border: 1px solid var(--border);
      border-radius: var(--shell-radius);
      padding: 16px;
  }
 
- body>main>section {
+ body > main > section,
+ body > main > div {
      overflow-x: auto;
  }
 
- .inventory-filter {
+ search {
      margin: 1rem 0;
+     display: block;
  }
 
- .inventory-filter label {
+ search label {
      display: block;
      font-weight: 600;
      margin-bottom: 0.35rem;
  }
 
- .inventory-filter input {
+ search input {
      width: min(100%, 22rem);
  }
 
- body>main>section table {
+ [data-embed-root="inventory"] table {
      width: 100%;
      border-collapse: collapse;
      background: var(--white);
      border: 1px solid var(--border);
  }
 
- body>main>section thead {
+ [data-embed-root="inventory"] thead {
      background: var(--gray-50);
  }
 
- body>main>section th,
- body>main>section td {
+ [data-embed-root="inventory"] th,
+ [data-embed-root="inventory"] td {
      padding: 10px 12px;
      text-align: left;
      vertical-align: middle;
@@ -175,47 +180,47 @@
      line-height: 1.3;
  }
 
- body>main>section th {
+ [data-embed-root="inventory"] th {
      white-space: nowrap;
      font-weight: 700;
      color: var(--text);
  }
 
- body>main>section td:nth-child(1) {
+ [data-embed-root="inventory"] td:nth-child(1) {
      white-space: nowrap;
  }
 
- body>main>section td:nth-child(2) {
+ [data-embed-root="inventory"] td:nth-child(2) {
      white-space: normal;
      overflow-wrap: anywhere;
      word-break: break-word;
  }
 
- body>main>section td:nth-child(3) {
+ [data-embed-root="inventory"] td:nth-child(3) {
      white-space: normal;
      overflow-wrap: anywhere;
      word-break: break-word;
      color: var(--muted);
  }
 
- body>main>section tbody tr:last-child td {
+ [data-embed-root="inventory"] tbody tr:last-child td {
      border-bottom: 0;
  }
 
- body>main>section td>a {
+ [data-embed-root="inventory"] td > a {
      color: var(--text);
      font-weight: 600;
      text-decoration: underline;
      text-underline-offset: 2px;
  }
 
- body>main>section td>a:focus-visible {
+ [data-embed-root="inventory"] td > a:focus-visible {
      outline: var(--outline-focus);
      outline-offset: 2px;
  }
 
  @media (max-width: 760px) {
-     body>main>section table {
+     [data-embed-root="inventory"] table {
          min-width: 0;
      }
  }
@@ -328,17 +333,17 @@
      box-shadow: var(--shadow-focus);
  }
 
- .group-field {
+ publicbase-group {
      display: block;
  }
 
- .group-field-row {
+ publicbase-group-row {
      display: flex;
      flex-wrap: wrap;
      gap: 8px;
  }
 
- .group-char-input {
+ publicbase-group input {
      width: 44px;
      min-width: 44px;
      padding-left: 0;
@@ -365,22 +370,22 @@
      color: var(--muted);
  }
 
- .signature-field {
+ publicbase-signature {
      display: flex;
      flex-direction: column;
      gap: 8px;
  }
 
- .signature-label {
+ publicbase-signature-label {
      color: var(--text);
  }
 
- .signature-required {
+ publicbase-signature-label span {
      color: var(--accent);
      margin-left: 2px;
  }
 
- .signature-pad {
+ publicbase-signature canvas {
      display: block;
      width: 100%;
      height: 120px;
@@ -391,17 +396,17 @@
      touch-action: none;
  }
 
- .signature-pad:focus-visible {
+ publicbase-signature canvas:focus-visible {
      outline: var(--outline-focus);
      outline-offset: 2px;
  }
 
- .signature-pad--error {
+ publicbase-signature canvas[data-signature-error="true"] {
      border-color: #c0392b;
      box-shadow: 0 0 0 2px rgba(192, 57, 43, 0.2);
  }
 
- .signature-clear {
+ publicbase-signature button {
      align-self: flex-start;
      font-size: 0.875em;
      padding: 4px 12px;
@@ -414,7 +419,7 @@
      transition: background 0.15s ease, border-color 0.15s ease;
  }
 
- .signature-clear:hover {
+ publicbase-signature button:hover {
      background: var(--gray-250);
      border-color: var(--gray-300);
      color: var(--text);
@@ -468,7 +473,7 @@
      transform: none;
  }
 
- #confirmation-overlay {
+ publicbase-confirmation {
      position: fixed;
      inset: 0;
      background: rgba(15, 23, 42, 0.35);
@@ -479,7 +484,7 @@
      z-index: 1000;
  }
 
- #confirmation-modal {
+ publicbase-confirmation-dialog {
      background: var(--panel);
      border: 1px solid var(--border);
      border-radius: var(--shell-radius);
@@ -488,15 +493,15 @@
      width: min(100%, 420px);
  }
 
- #confirmation-modal h2 {
+ publicbase-confirmation-dialog h2 {
      margin: 0 0 8px;
  }
 
- #confirmation-modal p {
+ publicbase-confirmation-dialog p {
      margin: 0 0 16px;
  }
 
- #confirmation-code {
+ publicbase-confirmation-code {
      display: flex;
      align-items: center;
      justify-content: space-between;
@@ -509,18 +514,18 @@
      letter-spacing: 0.08em;
  }
 
- #copy-confirmation {
+ publicbase-confirmation-code button {
      min-width: auto;
      padding: 8px 10px;
  }
 
- #confirmation-actions {
+ publicbase-confirmation-actions {
      display: flex;
      justify-content: flex-end;
      margin-top: 16px;
  }
 
- #form-submit-overlay {
+ publicbase-submit-overlay {
      position: fixed;
      inset: 0;
      z-index: 1100;
@@ -531,11 +536,11 @@
      background: rgba(15, 23, 42, 0.42);
  }
 
- #form-submit-overlay[hidden] {
+ publicbase-submit-overlay[hidden] {
      display: none;
  }
 
- .form-submit-overlay-panel {
+ publicbase-submit-panel {
      width: min(100%, 360px);
      display: flex;
      flex-direction: column;
@@ -549,13 +554,13 @@
      text-align: center;
  }
 
- .form-submit-overlay-panel p {
+ publicbase-submit-panel p {
      margin: 0;
      color: var(--text);
      font-weight: 700;
  }
 
- .form-submit-spinner {
+ publicbase-submit-spinner {
      width: 38px;
      height: 38px;
      border: 4px solid var(--gray-300);
@@ -570,7 +575,7 @@
      }
  }
 
- .altcha-shell {
+ publicbase-altcha {
      display: flex;
      flex-direction: column;
      gap: 10px;
@@ -580,45 +585,44 @@
      background: linear-gradient(180deg, rgba(92, 124, 255, 0.07), rgba(255, 255, 255, 0.98));
  }
 
- .altcha-shell[data-altcha-state="verified"] {
+ publicbase-altcha[data-altcha-state="verified"] {
      border-color: #86bf91;
      background: linear-gradient(180deg, rgba(22, 163, 74, 0.08), rgba(255, 255, 255, 0.98));
  }
 
- .altcha-shell[data-altcha-state="error"],
- .altcha-shell[data-altcha-state="expired"] {
+ publicbase-altcha[data-altcha-state="error"],
+ publicbase-altcha[data-altcha-state="expired"] {
      border-color: #d0a3a3;
      background: linear-gradient(180deg, rgba(185, 28, 28, 0.08), rgba(255, 255, 255, 0.98));
  }
 
- .altcha-title,
- .altcha-hint,
- .altcha-status {
+ publicbase-altcha p,
+ publicbase-altcha small {
      margin: 0;
  }
 
- .altcha-title {
+ publicbase-altcha p:first-child {
      font-weight: 700;
  }
 
- .altcha-hint,
- .altcha-status {
+ publicbase-altcha p,
+ publicbase-altcha small {
      color: var(--text);
  }
 
- .altcha-status[data-tone="success"] {
+ publicbase-altcha small[data-tone="success"] {
      color: #1f6f35;
  }
 
- .altcha-status[data-tone="warning"] {
+ publicbase-altcha small[data-tone="warning"] {
      color: #946200;
  }
 
- .altcha-status[data-tone="error"] {
+ publicbase-altcha small[data-tone="error"] {
      color: #a12828;
  }
 
- .altcha-shell altcha-widget {
+ publicbase-altcha altcha-widget {
      align-self: flex-start;
      width: min(100%, 320px);
      max-width: 100%;
@@ -632,7 +636,7 @@
  }
 
  @media (max-width: 640px) {
-     .altcha-shell altcha-widget {
+     publicbase-altcha altcha-widget {
          width: 100%;
      }
  }
