@@ -1,0 +1,24 @@
+{
+  "name": "publicbase-forms",
+  "version": "1.0.0",
+  "description": "PublicBase forms runtime.",
+  "main": "index.js",
+  "scripts": {
+    "smoke:dev": "node scripts/smoke-dev-form.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wgoudsbloem/publicbase-forms.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/wgoudsbloem/publicbase-forms/issues"
+  },
+  "homepage": "https://github.com/wgoudsbloem/publicbase-forms#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.60.0"
+  }
+}
