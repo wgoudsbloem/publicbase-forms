@@ -30,6 +30,10 @@ DB_HOST="${DB_HOST:?DB_HOST is required}"
 DB_SECURITY_GROUP_ID="${DB_SECURITY_GROUP_ID:?DB_SECURITY_GROUP_ID is required}"
 ADMIN_LAMBDA_SECURITY_GROUP_ID="${ADMIN_LAMBDA_SECURITY_GROUP_ID:-$DB_SECURITY_GROUP_ID}"
 RESOURCE_SUFFIX="${RESOURCE_SUFFIX:-}"
+RESOURCE_SUFFIX_OVERRIDE=()
+if [[ -n "$RESOURCE_SUFFIX" ]]; then
+  RESOURCE_SUFFIX_OVERRIDE=("ResourceSuffix=${RESOURCE_SUFFIX}")
+fi
 DB_SECRET_NAME="${DB_SECRET_NAME:-admin-db-credentials}"
 FORM_CODES_TABLE_NAME="${FORM_CODES_TABLE_NAME:-form_codes}"
 FORM_UPLOAD_BUCKET="${FORM_UPLOAD_BUCKET:-publicbase-files}"
@@ -58,7 +62,7 @@ echo "Deploying SAM stack (${STACK_NAME}) for ${PUBLICBASE_ENV}..."
       "DbHost=${DB_HOST}" \
       "DbSecurityGroupId=${DB_SECURITY_GROUP_ID}" \
       "AdminLambdaSecurityGroupId=${ADMIN_LAMBDA_SECURITY_GROUP_ID}" \
-      "ResourceSuffix=${RESOURCE_SUFFIX}" \
+      "${RESOURCE_SUFFIX_OVERRIDE[@]}" \
       "DbSecretName=${DB_SECRET_NAME}" \
       "FormCodesTableName=${FORM_CODES_TABLE_NAME}" \
       "FormUploadBucket=${FORM_UPLOAD_BUCKET}" \
