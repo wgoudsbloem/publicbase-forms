@@ -151,6 +151,12 @@
      padding: 16px;
  }
 
+ form > div:first-of-type {
+     display: flex;
+     flex-direction: column;
+     gap: 12px;
+ }
+
  body > main > section,
  body > main > div {
      overflow-x: auto;
