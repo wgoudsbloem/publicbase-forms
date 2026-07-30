@@ -106,6 +106,14 @@ const applyEmbedMode = () => {
     if (!embedRoot) return;
     document.documentElement.dataset.publicEmbed = 'true';
     document.body.dataset.publicEmbed = 'true';
+    const embedKind = String(embedRoot.dataset.embedRoot || '').trim().toLowerCase();
+    document.documentElement.dataset.publicEmbedRoot = embedKind;
+    document.body.dataset.publicEmbedRoot = embedKind;
+    if (embedKind === 'form') {
+        const header = embedRoot.closest('main')?.querySelector(':scope > header');
+        header?.querySelectorAll(':scope > img, :scope > aside').forEach((element) => element.remove());
+        return;
+    }
     document.body.replaceChildren(embedRoot);
 };
 
