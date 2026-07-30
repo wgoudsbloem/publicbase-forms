@@ -8,6 +8,7 @@ const FORM_ALTCHA_CHALLENGE_URL = 'https://api.publicbase.com/form/challenge';
 const ALTCHA_SCRIPT_URL = '/altcha.min.js';
 const CONTENT_MAX_WIDTH_QUERY_PARAM = 'max-width';
 const EMBED_QUERY_PARAM = 'embed';
+const PARENT_ORIGIN_QUERY_PARAM = 'parent-origin';
 const CONTENT_MAX_WIDTH_PATTERN = /^\d+(?:\.\d+)?(?:px|%|pt|em|rem|vw|vh|vmin|vmax|ch|ex|cm|mm|in|pc)$/i;
 let issuedFormCode = null;
 let altchaScriptPromise = null;
@@ -87,6 +88,17 @@ const isEmbedRequested = () => {
     }
 };
 
+const getRequestedParentOrigin = () => {
+    try {
+        const params = new URLSearchParams(window.location.search || '');
+        return window.PublicBaseEmbedNavigation?.getValidParentOrigin(
+            params.get(PARENT_ORIGIN_QUERY_PARAM)
+        ) || '';
+    } catch {
+        return '';
+    }
+};
+
 const applyRequestedContentMaxWidth = () => {
     const requestedMaxWidth = getRequestedContentMaxWidth();
     if (!requestedMaxWidth) return;
@@ -120,25 +132,46 @@ const applyEmbedMode = () => {
 const propagateRequestedContentMaxWidthToLinks = () => {
     const requestedMaxWidth = getRequestedContentMaxWidth();
     const embedRequested = isEmbedRequested();
-    if (!requestedMaxWidth && !embedRequested) return;
+    const parentOrigin = embedRequested ? getRequestedParentOrigin() : '';
+    if (!requestedMaxWidth && !embedRequested && !parentOrigin) return;
     document.querySelectorAll('[data-embed-root="inventory"] table a[href]').forEach((link) => {
         const rawHref = String(link.getAttribute('href') || '').trim();
-        if (!rawHref || rawHref.startsWith('#')) return;
-        let resolved;
-        try {
-            resolved = new URL(rawHref, window.location.href);
-        } catch {
-            return;
-        }
-        if (resolved.origin !== window.location.origin) return;
-        if (requestedMaxWidth && !resolved.searchParams.has(CONTENT_MAX_WIDTH_QUERY_PARAM)) {
-            resolved.searchParams.set(CONTENT_MAX_WIDTH_QUERY_PARAM, requestedMaxWidth);
-        }
-        if (embedRequested && !resolved.searchParams.has(EMBED_QUERY_PARAM)) {
-            resolved.searchParams.set(EMBED_QUERY_PARAM, 'true');
-        }
-        const nextHref = `${resolved.pathname}${resolved.search}${resolved.hash}`;
+        const nextHref = window.PublicBaseEmbedNavigation?.buildPropagatedInternalHref({
+            rawHref,
+            pageUrl: window.location.href,
+            embedRequested,
+            maxWidth: requestedMaxWidth,
+            parentOrigin
+        }) || '';
+        if (!nextHref) return;
         link.setAttribute('href', nextHref);
+    });
+};
+
+const sendParentNavigationMessage = () => {
+    if (!isEmbedRequested() || !getRequestedParentOrigin()) return false;
+    if (window.parent === window) return false;
+    return window.PublicBaseEmbedNavigation?.postNavigationMessage({
+        targetWindow: window.parent,
+        targetOrigin: getRequestedParentOrigin(),
+        pathname: window.location.pathname,
+        embedRequested: isEmbedRequested(),
+        isFramed: window.parent !== window
+    }) || false;
+};
+
+const initParentNavigationSynchronization = () => {
+    if (!isEmbedRequested() || !getRequestedParentOrigin() || window.parent === window) return;
+    sendParentNavigationMessage();
+    window.addEventListener('popstate', sendParentNavigationMessage);
+    ['pushState', 'replaceState'].forEach((methodName) => {
+        const original = window.history?.[methodName];
+        if (typeof original !== 'function') return;
+        window.history[methodName] = function publicBaseSynchronizedHistory(...args) {
+            const result = original.apply(this, args);
+            queueMicrotask(sendParentNavigationMessage);
+            return result;
+        };
     });
 };
 
@@ -979,6 +1012,7 @@ formCodePromise = initFormCode();
 applyRequestedContentMaxWidth();
 applyEmbedMode();
 propagateRequestedContentMaxWidthToLinks();
+initParentNavigationSynchronization();
 initNewWindowLinkWarnings();
 attachInventoryFilter();
 attachCapitalization();

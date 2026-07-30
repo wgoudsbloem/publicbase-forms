@@ -42,7 +42,7 @@ FORM_UPLOAD_TOKEN_SECRET_NAME="${FORM_UPLOAD_TOKEN_SECRET_NAME:-forms-upload-tok
 SUBMISSION_EMAIL_TOPIC_NAME="${SUBMISSION_EMAIL_TOPIC_NAME:-admin-submission-email}"
 FORM_API_ORIGIN="${FORM_API_ORIGIN:-https://${FORMS_API_DOMAIN:-api.publicbase.com}}"
 
-for asset in base.css base.js altcha.min.js; do
+for asset in base.css base.js embed-navigation.js altcha.min.js; do
   if [[ ! -f "$UI_PUBLIC_DIR/$asset" ]]; then
     echo "Required asset missing: $UI_PUBLIC_DIR/$asset" >&2
     exit 1
@@ -80,6 +80,7 @@ TMP_DIR="$(mktemp -d)"
 trap 'rm -rf "$TMP_DIR"' EXIT
 cp "$UI_PUBLIC_DIR/base.css" "$TMP_DIR/base.css"
 cp "$UI_PUBLIC_DIR/base.js" "$TMP_DIR/base.js"
+cp "$UI_PUBLIC_DIR/embed-navigation.js" "$TMP_DIR/embed-navigation.js"
 cp "$UI_PUBLIC_DIR/altcha.min.js" "$TMP_DIR/altcha.min.js"
 if [[ "$FORM_API_ORIGIN" != "https://api.publicbase.com" ]]; then
   perl -0pi -e "s|https://api\\.publicbase\\.com|$FORM_API_ORIGIN|g" "$TMP_DIR/base.js"
@@ -91,6 +92,9 @@ aws s3 cp "$TMP_DIR/base.css" "s3://$PUBLISH_BUCKET/base.css" \
 aws s3 cp "$TMP_DIR/base.js" "s3://$PUBLISH_BUCKET/base.js" \
   --content-type 'application/javascript; charset=utf-8' \
   --cache-control 'public, max-age=300'
+aws s3 cp "$TMP_DIR/embed-navigation.js" "s3://$PUBLISH_BUCKET/embed-navigation.js" \
+  --content-type 'application/javascript; charset=utf-8' \
+  --cache-control 'public, max-age=300'
 aws s3 cp "$TMP_DIR/altcha.min.js" "s3://$PUBLISH_BUCKET/altcha.min.js" \
   --content-type 'application/javascript; charset=utf-8' \
   --cache-control 'public, max-age=300'
@@ -99,7 +103,7 @@ if [[ -n "${FORMS_CLOUDFRONT_DISTRIBUTION_ID:-}" ]]; then
   echo "Invalidating CloudFront shared assets..."
   aws cloudfront create-invalidation \
     --distribution-id "$FORMS_CLOUDFRONT_DISTRIBUTION_ID" \
-    --paths '/base.css' '/base.js' '/altcha.min.js'
+    --paths '/base.css' '/base.js' '/embed-navigation.js' '/altcha.min.js'
 else
   echo "Skipping CloudFront invalidation; FORMS_CLOUDFRONT_DISTRIBUTION_ID is empty."
 fi

@@ -4,6 +4,7 @@
   "description": "PublicBase forms runtime.",
   "main": "index.js",
   "scripts": {
+    "test": "node --test test/*.test.cjs",
     "smoke:dev": "node scripts/smoke-dev-form.mjs"
   },
   "repository": {
