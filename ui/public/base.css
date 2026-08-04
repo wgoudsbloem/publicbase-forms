@@ -599,18 +599,18 @@
      padding: 16px;
      border: 1px solid var(--border);
      border-radius: var(--field-radius);
-     background: linear-gradient(180deg, rgba(92, 124, 255, 0.07), rgba(255, 255, 255, 0.98));
+     background: #f5f7ff;
  }
 
  publicbase-altcha[data-altcha-state="verified"] {
      border-color: #86bf91;
-     background: linear-gradient(180deg, rgba(22, 163, 74, 0.08), rgba(255, 255, 255, 0.98));
+     background: #f3fbf5;
  }
 
  publicbase-altcha[data-altcha-state="error"],
  publicbase-altcha[data-altcha-state="expired"] {
      border-color: #d0a3a3;
-     background: linear-gradient(180deg, rgba(185, 28, 28, 0.08), rgba(255, 255, 255, 0.98));
+     background: #fcf4f4;
  }
 
  publicbase-altcha p,
